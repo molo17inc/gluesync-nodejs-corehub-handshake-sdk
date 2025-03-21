@@ -61,7 +61,7 @@ export async function createSslContextFromJks(
         } else {
           // Try to convert DER to PEM if needed
           try {
-            const derBytes = forge.util.createBuffer(content, 'binary');
+            const derBytes = forge.util.createBuffer(content);
             const asn1 = forge.asn1.fromDer(derBytes);
             const cert = forge.pki.certificateFromAsn1(asn1);
             const pemCert = forge.pki.certificateToPem(cert);

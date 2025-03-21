@@ -20,7 +20,7 @@
  * Copyright (C) 2025 MOLO17. All rights reserved.
  */
 
-import * as WebSocket from 'ws';
+import WebSocket from 'ws';
 import { EventEmitter } from 'events';
 import * as tls from 'tls';
 import debug from 'debug';
@@ -139,7 +139,7 @@ export class WebSocketConnection extends EventEmitter {
       log('Connecting to %s', this.connectionUrl);
       
       // Create WebSocket connection
-      const wsOptions: WebSocket.ClientOptions = {
+      const wsOptions = {
         headers: this.headers,
         handshakeTimeout: this.timeout,
         ...this.sslOptions
@@ -147,13 +147,13 @@ export class WebSocketConnection extends EventEmitter {
       
       // Create connection with timeout
       const connectionPromise = new Promise<WebSocket>((resolve, reject) => {
-        const ws = new WebSocket(this.connectionUrl, wsOptions);
+        const ws = new WebSocket(this.connectionUrl, wsOptions) as WebSocket;
         
         ws.once('open', () => {
           resolve(ws);
         });
         
-        ws.once('error', (err) => {
+        ws.once('error', (err: Error) => {
           reject(new GluesyncConnectionError(`Connection error: ${err.message}`));
         });
       });
@@ -199,18 +199,22 @@ export class WebSocketConnection extends EventEmitter {
       
       return this._token;
     } catch (error) {
-      // Clean up any partial connection
-      await this.cleanup();
+      // Clean up if connection failed
+      if (this.ws) {
+        this.ws.terminate();
+        this.ws = null;
+      }
       
-      // Re-throw appropriate error types
-      if (error instanceof GluesyncTimeoutError || 
-          error instanceof GluesyncAuthenticationError ||
-          error instanceof GluesyncHandshakeError) {
+      // Rethrow authentication errors
+      if (
+        error instanceof GluesyncAuthenticationError ||
+        error instanceof GluesyncHandshakeError ||
+        error instanceof GluesyncTimeoutError
+      ) {
         throw error;
       }
       
-      // Convert generic errors to connection errors
-      log('Connection failed: %s', error);
+      // Wrap other errors
       throw new GluesyncConnectionError(`Failed to connect: ${error}`);
     }
   }
@@ -218,64 +222,85 @@ export class WebSocketConnection extends EventEmitter {
   /**
    * Disconnect from the CoreHub.
    *
+   * @returns Promise that resolves when disconnection is complete
    * @throws GluesyncConnectionError if an error occurs during disconnection
    */
   public async disconnect(): Promise<void> {
     if (!this.isConnected) {
-      log('Not connected to CoreHub');
+      log('Not connected, nothing to disconnect');
       return;
     }
     
+    log('Disconnecting from CoreHub');
+    
     try {
-      await this.cleanup();
-      log('Disconnected from CoreHub');
+      // Stop the ping loop
+      this.stopPingLoop();
+      
+      // Close the WebSocket connection
+      if (this.ws) {
+        this.ws.close();
+        this.ws = null;
+      }
+      
+      // Reset connection state
+      this._token = null;
+      this.connected = false;
       
       // Call the disconnected callback if set
       if (this.onDisconnected) {
         await this.callCallback(this.onDisconnected, 'Disconnected by client');
       }
+      
+      log('Disconnected from CoreHub');
     } catch (error) {
-      log('Error during disconnection: %s', error);
       if (this.onError) {
         await this.callCallback(this.onError, error instanceof Error 
-          ? error
-          : new Error(`${error}`)
-        );
+          ? error 
+          : new Error(String(error)));
       }
+      
       throw new GluesyncConnectionError(`Error during disconnection: ${error}`);
     }
   }
   
   /**
-   * Set up event handlers for WebSocket messages.
+   * Set up message handlers for the WebSocket connection.
    */
   private setupMessageHandlers(): void {
-    if (!this.ws) return;
+    if (!this.ws) {
+      return;
+    }
     
-    this.ws.on('message', async (data: WebSocket.Data) => {
+    // Handle incoming messages
+    this.ws.on('message', (data: WebSocket.Data) => {
       const message = data.toString();
-      log('Received message from CoreHub: %s', message);
       
-      // Handle pong messages
-      if (message === 'pong') {
-        log('Received "pong" from CoreHub');
-      } else {
-        log('Received unexpected message: %s', message);
+      // Handle ping messages
+      if (message === 'ping') {
+        this.sendMessage('pong').catch((error) => {
+          log('Failed to send pong: %s', error);
+        });
       }
     });
     
+    // Handle connection close
     this.ws.on('close', async (code: number, reason: string) => {
+      log('Connection closed: %d %s', code, reason);
+      
+      // Clean up
+      this.stopPingLoop();
+      this.ws = null;
+      this._token = null;
       this.connected = false;
-      const errorMessage = getErrorFromCloseReason(reason);
-      log('Connection closed: %s (code: %d)', errorMessage, code);
       
-      await this.cleanup();
-      
+      // Call the disconnected callback if set
       if (this.onDisconnected) {
-        await this.callCallback(this.onDisconnected, errorMessage);
+        await this.callCallback(this.onDisconnected, getErrorFromCloseReason(reason));
       }
     });
     
+    // Handle errors
     this.ws.on('error', async (error: Error) => {
       log('WebSocket error: %s', error.message);
       
@@ -289,62 +314,42 @@ export class WebSocketConnection extends EventEmitter {
    * Start the ping loop to keep the connection alive.
    */
   private startPingLoop(): void {
-    if (this.pingIntervalId) {
-      clearInterval(this.pingIntervalId);
-    }
+    // Stop any existing ping loop
+    this.stopPingLoop();
     
-    this.pingIntervalId = setInterval(async () => {
+    // Start a new ping loop
+    this.pingIntervalId = setInterval(() => {
       if (this.isConnected) {
-        try {
-          await this.sendMessage('ping');
-          log('Sent "ping" to CoreHub');
-        } catch (error) {
-          log('Error sending ping: %s', error);
-        }
+        this.sendMessage('ping').catch((error) => {
+          log('Failed to send ping: %s', error);
+        });
+      } else {
+        this.stopPingLoop();
       }
     }, this.pingInterval);
   }
   
   /**
-   * Clean up resources when disconnecting.
+   * Stop the ping loop.
    */
-  private async cleanup(): Promise<void> {
-    // Stop ping interval
+  private stopPingLoop(): void {
     if (this.pingIntervalId) {
       clearInterval(this.pingIntervalId);
       this.pingIntervalId = null;
     }
-    
-    // Close WebSocket connection
-    if (this.ws) {
-      const ws = this.ws;
-      this.ws = null;
-      
-      if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-        try {
-          ws.close();
-        } catch (e) {
-          log('Error closing WebSocket: %s', e);
-        }
-      }
-      
-      // Remove all listeners
-      ws.removeAllListeners();
-    }
-    
-    this.connected = false;
-    this._token = null;
   }
   
   /**
    * Send a message to the CoreHub.
    *
-   * @param message - The message to send
+   * @param message - Message to send
+   * @returns Promise that resolves when the message is sent
    * @throws GluesyncClosedError if the connection is closed
+   * @throws GluesyncConnectionError if sending fails
    */
-  private async sendMessage(message: string): Promise<void> {
+  private sendMessage(message: string): Promise<void> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      throw new GluesyncClosedError('Cannot send message: connection is not open');
+      return Promise.reject(new GluesyncClosedError('Cannot send message: connection is not open'));
     }
     
     return new Promise<void>((resolve, reject) => {
@@ -391,9 +396,9 @@ export class WebSocketConnection extends EventEmitter {
         reject(new GluesyncConnectionError(`Connection error: ${error.message}`));
       };
       
-      this.ws.once('message', messageHandler);
-      this.ws.once('close', closeHandler);
-      this.ws.once('error', errorHandler);
+      this.ws!.once('message', messageHandler);
+      this.ws!.once('close', closeHandler);
+      this.ws!.once('error', errorHandler);
     });
   }
   
