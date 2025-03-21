@@ -69,7 +69,21 @@ build:
 test:
   stage: test
   image: node:${NODE_VERSION}-alpine
+  services:
+    - name: molo17/gluesync-core-hub:latest
+      alias: corehub
+      variables:
+        DOCKER_TLS_CERTDIR: ""
+  variables:
+    # Increase test timeout to allow for service startup
+    JEST_TIMEOUT: 30000
   script:
+    # Wait for CoreHub to be ready
+    - apk add --no-cache curl
+    - >-
+      echo "Waiting for CoreHub to be ready..."
+    - sleep 10
+    # Run tests
     - npm test
   dependencies:
     - setup

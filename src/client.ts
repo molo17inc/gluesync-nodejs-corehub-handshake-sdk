@@ -168,11 +168,11 @@ export class GluesyncClient extends EventEmitter {
    * @returns True if connected, False otherwise
    */
   public get isConnected(): boolean {
-    return this.connection !== null && this.connection.isConnected === true;
+    return this._connected && this.connection !== null && this.connection.isConnected === true;
   }
 
   /**
-   * Set the connected state (for testing purposes)
+   * Set the connected state
    */
   private _connected: boolean = false;
   

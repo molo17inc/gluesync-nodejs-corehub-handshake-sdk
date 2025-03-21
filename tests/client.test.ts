@@ -46,9 +46,18 @@ describe('GluesyncClient', () => {
     // Mock WebSocketConnection.connect to return a mock token
     (WebSocketConnection.prototype.connect as jest.Mock).mockResolvedValue('jwt-token-123');
     
+    // Mock WebSocketConnection.isConnected getter
+    Object.defineProperty(WebSocketConnection.prototype, 'isConnected', {
+      get: jest.fn().mockReturnValue(true),
+      configurable: true
+    });
+    
+    // Determine host based on environment (CI vs local)
+    const host = process.env.CI ? 'corehub' : 'localhost';
+    
     // Create client instance with the actual license file
     client = new GluesyncClient({
-      host: 'localhost',
+      host: host,
       port: 1717,
       licenseFilePath: './gs-license.dat',
       moduleTag: 'test-module'
@@ -248,6 +257,15 @@ describe('GluesyncClient', () => {
     // First connect
     await client.connect();
     
+    // Mock the connection state to be disconnected after disconnect is called
+    (WebSocketConnection.prototype.disconnect as jest.Mock).mockImplementation(() => {
+      Object.defineProperty(WebSocketConnection.prototype, 'isConnected', {
+        get: jest.fn().mockReturnValue(false),
+        configurable: true
+      });
+      return Promise.resolve();
+    });
+    
     // Then disconnect
     await client.disconnect();
     
@@ -255,7 +273,6 @@ describe('GluesyncClient', () => {
     expect(WebSocketConnection.prototype.disconnect).toHaveBeenCalled();
     
     // Verify the connection state
-    expect(client.isConnected).toBe(false);
     expect(client.isConnected).toBe(false);
   });
   

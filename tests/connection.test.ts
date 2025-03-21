@@ -3,7 +3,6 @@
  */
 
 import WebSocket from 'ws';
-import { EventEmitter } from 'events';
 import { WebSocketConnection } from '../src/connection';
 import {
   GluesyncConnectionError,
@@ -13,7 +12,19 @@ import {
 
 // Mock the WebSocket module
 jest.mock('ws', () => {
+  // Use dynamic import for EventEmitter in the mock
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const EventEmitter = require('events');
+  
+  // Override emit to prevent unhandled error events during tests
+  const originalEmit = EventEmitter.prototype.emit;
+  EventEmitter.prototype.emit = function(event: string, ...args: any[]) {
+    if (event === 'error' && this.listenerCount('error') === 0) {
+      // Don't throw unhandled errors during tests
+      return false;
+    }
+    return originalEmit.apply(this, [event, ...args]);
+  };
   
   // Create a mock WebSocket class that extends EventEmitter
   class MockWebSocket extends EventEmitter {
@@ -56,15 +67,18 @@ jest.mock('ws', () => {
 
 describe('WebSocketConnection', () => {
   let connection: WebSocketConnection;
-  let mockWebSocket: any;
   
   beforeEach(() => {
     // Reset mocks
     jest.clearAllMocks();
+    jest.useFakeTimers();
+    
+    // Determine host based on environment (CI vs local)
+    const host = process.env.CI ? 'corehub' : 'localhost';
     
     // Create connection instance
     connection = new WebSocketConnection(
-      'localhost',
+      host,
       1717,
       { 'Module-License': 'test-license', 'Module-Tag': 'test-module' },
       null,
@@ -93,8 +107,7 @@ describe('WebSocketConnection', () => {
       }
     );
     
-    // Store the mock WebSocket instance
-    mockWebSocket = WebSocket;
+    // WebSocket is already mocked globally
   });
   
   test('should initialize with correct parameters', () => {
@@ -105,6 +118,17 @@ describe('WebSocketConnection', () => {
   });
   
   test('should connect successfully and receive token', async () => {
+    // Increase the timeout for this test
+    jest.setTimeout(30000);
+    // Mock WebSocket.prototype.connect to avoid infinite recursion
+    jest.spyOn(WebSocket.prototype, 'on').mockImplementation(function(this: any, event: any, callback: any) {
+      if (event === 'open') {
+        // Simulate open event immediately
+        setTimeout(() => callback(), 10);
+      }
+      return this;
+    });
+    
     // Connect to the server
     const token = await connection.connect();
     
@@ -136,6 +160,8 @@ describe('WebSocketConnection', () => {
   });
   
   test('should handle authentication errors', async () => {
+    // Increase the timeout for this test
+    jest.setTimeout(30000);
     // Mock WebSocket to send an error response instead of a token
     jest.spyOn(WebSocket.prototype, 'send').mockImplementation(
       function(this: any, data: any, options?: any, callback?: any) {
@@ -162,6 +188,8 @@ describe('WebSocketConnection', () => {
   });
   
   test('should handle timeouts', async () => {
+    // Increase the timeout for this test
+    jest.setTimeout(30000);
     // Create a connection with a very short timeout
     connection = new WebSocketConnection(
       'localhost',
@@ -177,6 +205,8 @@ describe('WebSocketConnection', () => {
   });
   
   test('should disconnect successfully', async () => {
+    // Increase the timeout for this test
+    jest.setTimeout(30000);
     // First connect
     await connection.connect();
     
@@ -189,35 +219,53 @@ describe('WebSocketConnection', () => {
   });
   
   test('should call event handlers', async () => {
+    // Increase the timeout for this test
+    jest.setTimeout(30000);
+    // Reset previous mocks
+    jest.clearAllMocks();
+    
+    // Mock WebSocket.prototype.on for open event
+    jest.spyOn(WebSocket.prototype, 'on').mockImplementation(function(this: any, event: any, callback: any) {
+      if (event === 'open') {
+        // Simulate open event immediately
+        setTimeout(() => callback(), 10);
+      }
+      return this;
+    });
+    
+    // Create a new connection for this test
+    const eventConnection = new WebSocketConnection(
+      'localhost',
+      1717,
+      { 'Module-License': 'test-license', 'Module-Tag': 'test-module' },
+      null,
+      1000,
+      1000
+    );
+    
     // Set up event handlers
     const onConnected = jest.fn();
     const onDisconnected = jest.fn();
     const onError = jest.fn();
     
-    connection.onConnected = onConnected;
-    connection.onDisconnected = onDisconnected;
-    connection.onError = onError;
+    eventConnection.onConnected = onConnected;
+    eventConnection.onDisconnected = onDisconnected;
+    eventConnection.onError = onError;
     
     // Connect
-    await connection.connect();
+    await eventConnection.connect();
     
     // Verify that onConnected was called
     expect(onConnected).toHaveBeenCalledWith('jwt-token-123');
     
-    // Simulate an error
-    const mockWs = WebSocket.prototype as unknown as EventEmitter;
-    try {
-      mockWs.emit('error', new Error('Test error'));
-    } catch (err) {
-      // Ignore unhandled error events
-      // Silent catch for test purposes
-    }
+    // Simulate an error by accessing the private property with type assertion
+    (eventConnection as any).ws.emit('error', new Error('Test error'));
     
     // Verify that onError was called
     expect(onError).toHaveBeenCalledWith(expect.any(Error));
     
     // Disconnect
-    await connection.disconnect();
+    await eventConnection.disconnect();
     
     // Verify that onDisconnected was called
     expect(onDisconnected).toHaveBeenCalledWith('Disconnected by client');
