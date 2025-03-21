@@ -46,8 +46,8 @@ setup:
 lint:
   stage: lint
   image: node:${NODE_VERSION}-alpine
-  script:
-    - npm run lint
+  script: |
+    npm run lint
   dependencies:
     - setup
 
