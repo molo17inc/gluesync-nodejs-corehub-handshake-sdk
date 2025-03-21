@@ -1,0 +1,63 @@
+# GitLab CI/CD configuration for Gluesync Node.js SDK
+
+default:
+  tags:
+    - gs-docker-performance-test
+
+# Define the stages of the pipeline
+stages:
+  - setup
+  - lint
+  - build
+  - test
+
+# Cache node_modules to speed up builds
+cache:
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+    - node_modules/
+
+# Setup job - install dependencies
+setup:
+  stage: setup
+  image: node:20-alpine
+  script:
+    - echo "Node.js version: $(node -v)"
+    - echo "npm version: $(npm -v)"
+    - npm ci
+    - echo "$GLUESYNC_LICENSE_CONTENT" > ./gs-license.dat  # Create license file from CI variable
+  artifacts:
+    paths:
+      - node_modules/
+      - gs-license.dat
+
+# Lint job - check code quality
+lint:
+  stage: lint
+  image: node:20-alpine
+  script:
+    - npm run lint
+  dependencies:
+    - setup
+
+# Build job - compile TypeScript to JavaScript
+build:
+  stage: build
+  image: node:20-alpine
+  script:
+    - npm run build
+  dependencies:
+    - setup
+  artifacts:
+    paths:
+      - dist/
+
+# Test job - run Jest tests
+test:
+  stage: test
+  image: node:20-alpine
+  script:
+    - npm test
+  dependencies:
+    - setup
+    - build
