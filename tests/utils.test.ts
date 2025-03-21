@@ -18,6 +18,13 @@ jest.mock('fs-extra');
 jest.mock('jszip');
 jest.mock('node-forge');
 
+// Define proper types for mocked functions
+type MockedFunction<T extends (...args: any) => any> = jest.MockedFunction<T>;
+
+// Define a more specific type for fs.readFile
+type ReadFileFunction = (path: fs.PathLike, options?: any) => Promise<any>;
+type ReadFileMock = jest.MockedFunction<ReadFileFunction>;
+
 describe('utils', () => {
   beforeEach(() => {
     // Reset mocks
@@ -27,7 +34,7 @@ describe('utils', () => {
   describe('createSslContextFromJks', () => {
     beforeEach(() => {
       // Mock fs.readFile to return mock JKS data
-      jest.spyOn(fs, 'readFile').mockResolvedValue(Buffer.from('mock-jks-data') as any);
+      (jest.spyOn(fs, 'readFile') as ReadFileMock).mockResolvedValue(Buffer.from('mock-jks-data'));
       
       // Mock JSZip.loadAsync to return a mock zip object
       const mockZip = {
@@ -75,7 +82,7 @@ describe('utils', () => {
     
     test('should handle errors when reading JKS file', async () => {
       // Mock fs.readFile to throw an error
-      jest.spyOn(fs, 'readFile').mockRejectedValue(new Error('File not found') as any);
+      (jest.spyOn(fs, 'readFile') as ReadFileMock).mockRejectedValue(new Error('File not found'));
       
       // Expect createSslContextFromJks to throw a GluesyncSSLError
       await expect(createSslContextFromJks('keystore.jks', 'password'))

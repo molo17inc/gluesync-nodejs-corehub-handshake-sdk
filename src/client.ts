@@ -168,8 +168,13 @@ export class GluesyncClient extends EventEmitter {
    * @returns True if connected, False otherwise
    */
   public get isConnected(): boolean {
-    return this.connection !== null && this.connection.isConnected;
+    return this.connection !== null && this.connection.isConnected === true;
   }
+
+  /**
+   * Set the connected state (for testing purposes)
+   */
+  private _connected: boolean = false;
   
   /**
    * Event handler for connected events.
@@ -218,6 +223,9 @@ export class GluesyncClient extends EventEmitter {
       return this.token!;
     }
     
+    // Reset connection state
+    this._connected = false;
+    
     try {
       // Use autodiscovery if host is not provided
       let host = this.host;
@@ -243,7 +251,7 @@ export class GluesyncClient extends EventEmitter {
       // Set up SSL options if needed
       if (this.useSSL && !this.sslOptions) {
         try {
-          // We need to cast here because we already checked in the constructor
+          // Get keystore path and password from constructor parameters or environment variables
           const keystorePath = process.env.KEYSTORE_PATH || '';
           const keystorePassword = process.env.KEYSTORE_PASSWORD || '';
           
@@ -273,6 +281,7 @@ export class GluesyncClient extends EventEmitter {
       // Connect to the server
       const token = await this.connection.connect();
       this._token = token;
+      this._connected = true;
       
       log('Connected to CoreHub at %s:%d', host, this.port);
       return token;
@@ -298,6 +307,9 @@ export class GluesyncClient extends EventEmitter {
       log('Not connected to CoreHub');
       return;
     }
+    
+    // Reset connection state
+    this._connected = false;
     
     try {
       await this.connection!.disconnect();

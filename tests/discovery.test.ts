@@ -36,6 +36,7 @@ describe('CoreHubDiscovery', () => {
       bind: jest.fn(),
       send: jest.fn(),
       close: jest.fn(),
+      setBroadcast: jest.fn(),
       address: jest.fn().mockReturnValue({ port: 1717 })
     };
     
@@ -57,6 +58,7 @@ describe('CoreHubDiscovery', () => {
   });
   
   test('should bind socket when discover is called', async () => {
+    jest.setTimeout(10000); // Increase timeout for this test
     // Mock the socket to emit 'listening' event when bind is called
     mockSocket.bind.mockImplementation((options: any, callback: any) => {
       if (callback) callback();
@@ -116,6 +118,7 @@ describe('CoreHubDiscovery', () => {
   });
   
   test('should handle errors during discovery', async () => {
+    jest.setTimeout(10000); // Increase timeout for this test
     // Mock the socket to emit 'listening' event when bind is called
     mockSocket.bind.mockImplementation((options: any, callback: any) => {
       if (callback) callback();

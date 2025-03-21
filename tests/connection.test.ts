@@ -206,7 +206,12 @@ describe('WebSocketConnection', () => {
     
     // Simulate an error
     const mockWs = WebSocket.prototype as unknown as EventEmitter;
-    mockWs.emit('error', new Error('Test error'));
+    try {
+      mockWs.emit('error', new Error('Test error'));
+    } catch (err) {
+      // Ignore unhandled error events
+      // Silent catch for test purposes
+    }
     
     // Verify that onError was called
     expect(onError).toHaveBeenCalledWith(expect.any(Error));

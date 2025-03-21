@@ -136,9 +136,14 @@ describe('GluesyncClient', () => {
       port: 1717,
       licenseFilePath: './gs-license.dat',
       moduleTag: 'test-module',
+      ssl: true,
       keystorePath: 'keystore.jks',
       keystorePassword: 'password'
     });
+    
+    // Set environment variables for keystore path and password
+    process.env.KEYSTORE_PATH = 'keystore.jks';
+    process.env.KEYSTORE_PASSWORD = 'password';
     
     // Connect to the server
     await client.connect();
@@ -162,6 +167,10 @@ describe('GluesyncClient', () => {
       1000,
       10000
     );
+    
+    // Clean up environment variables
+    delete process.env.KEYSTORE_PATH;
+    delete process.env.KEYSTORE_PASSWORD;
   });
   
   test('should handle connection errors', async () => {
@@ -212,9 +221,14 @@ describe('GluesyncClient', () => {
       port: 1717,
       licenseFilePath: './gs-license.dat',
       moduleTag: 'test-module',
+      ssl: true,
       keystorePath: 'keystore.jks',
       keystorePassword: 'password'
     });
+    
+    // Set environment variables for keystore path and password
+    process.env.KEYSTORE_PATH = 'keystore.jks';
+    process.env.KEYSTORE_PASSWORD = 'password';
     
     // Mock createSslContextFromJks to throw an error
     (utils.createSslContextFromJks as jest.Mock).mockRejectedValue(
@@ -224,6 +238,10 @@ describe('GluesyncClient', () => {
     // Expect connect to throw an SSL error
     await expect(client.connect()).rejects.toThrow(GluesyncSSLError);
     expect(client.isConnected).toBe(false);
+    
+    // Clean up environment variables
+    delete process.env.KEYSTORE_PATH;
+    delete process.env.KEYSTORE_PASSWORD;
   });
   
   test('should disconnect successfully', async () => {
