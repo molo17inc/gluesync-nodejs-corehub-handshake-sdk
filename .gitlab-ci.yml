@@ -4,12 +4,23 @@ default:
   tags:
     - gs-docker-performance-test
 
-# Define the stages of the pipeline
+# Only run on develop branch merges
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "develop"
+      when: always
+    - if: $CI_COMMIT_BRANCH == "develop"
+      when: always
+    - when: never
+
 stages:
   - setup
   - lint
   - build
   - test
+
+variables:
+  NODE_VERSION: "20"
 
 # Cache node_modules to speed up builds
 cache:
@@ -20,12 +31,12 @@ cache:
 # Setup job - install dependencies
 setup:
   stage: setup
-  image: node:20-alpine
-  script:
-    - echo "Node.js version: $(node -v)"
-    - echo "npm version: $(npm -v)"
-    - npm ci
-    - echo "$GLUESYNC_LICENSE_CONTENT" > ./gs-license.dat  # Create license file from CI variable
+  image: node:${NODE_VERSION}-alpine
+  script: |
+    echo "Node.js version: $(node -v)"
+    echo "npm version: $(npm -v)"
+    npm ci
+    echo "$GLUESYNC_LICENSE_CONTENT" > ./gs-license.dat
   artifacts:
     paths:
       - node_modules/
@@ -34,7 +45,7 @@ setup:
 # Lint job - check code quality
 lint:
   stage: lint
-  image: node:20-alpine
+  image: node:${NODE_VERSION}-alpine
   script:
     - npm run lint
   dependencies:
@@ -43,7 +54,7 @@ lint:
 # Build job - compile TypeScript to JavaScript
 build:
   stage: build
-  image: node:20-alpine
+  image: node:${NODE_VERSION}-alpine
   script:
     - npm run build
   dependencies:
@@ -55,7 +66,7 @@ build:
 # Test job - run Jest tests
 test:
   stage: test
-  image: node:20-alpine
+  image: node:${NODE_VERSION}-alpine
   script:
     - npm test
   dependencies:
