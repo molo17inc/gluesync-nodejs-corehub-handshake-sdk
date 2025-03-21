@@ -68,21 +68,20 @@ build:
 # Test job - run Jest tests
 test:
   stage: test
-  image: node:${NODE_VERSION}-alpine
-  services:
-    - name: molo17/gluesync-core-hub:latest
-      alias: corehub
-      variables:
-        DOCKER_TLS_CERTDIR: ""
+  image: molo17/gluesync-core-hub:latest
   variables:
     # Increase test timeout to allow for service startup
     JEST_TIMEOUT: 30000
   script:
-    # Wait for CoreHub to be ready
-    - apk add --no-cache curl
-    - >-
-      echo "Waiting for CoreHub to be ready..."
-    - sleep 10
+    # Install Node.js and npm (since this is based on gradle:8.8-jdk21)
+    - apt-get update
+    - apt-get install -y curl
+    - curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+    - apt-get install -y nodejs
+    - 'echo "Node.js version: $(node -v)"'
+    - 'echo "npm version: $(npm -v)"'
+    # Wait for CoreHub to be ready (it's already running in the same container)
+    - echo "CoreHub is running in the same container"
     # Run tests
     - npm test
   dependencies:

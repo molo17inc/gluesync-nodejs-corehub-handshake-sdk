@@ -48,22 +48,20 @@ describe('CoreHubDiscovery', () => {
     // Mock dgram.createSocket to return our mock socket
     (dgram.createSocket as jest.Mock).mockReturnValue(mockSocket);
     
-    // Set up mock response for CI environment
-    if (process.env.CI) {
-      // Mock a response from the CoreHub service
-      mockSocket.on.mockImplementation((event: string, callback: (...args: any[]) => void) => {
-        if (event === 'message') {
-          // Simulate a message from CoreHub
-          setTimeout(() => {
-            callback(Buffer.from(JSON.stringify({
-              host: 'corehub',
-              port: 1717
-            })), { address: 'corehub', port: 1717 });
-          }, 100);
-        }
-        return mockSocket;
-      });
-    }
+    // Always set up mock response since CoreHub is running in the same container
+    // Mock a response from the CoreHub service
+    mockSocket.on.mockImplementation((event: string, callback: (...args: any[]) => void) => {
+      if (event === 'message') {
+        // Simulate a message from CoreHub
+        setTimeout(() => {
+          callback(Buffer.from(JSON.stringify({
+            host: 'localhost',
+            port: 1717
+          })), { address: 'localhost', port: 1717 });
+        }, 100);
+      }
+      return mockSocket;
+    });
     
     // Create discovery instance with a longer timeout to avoid test failures
     discovery = new CoreHubDiscovery(1717, 10, 30000);

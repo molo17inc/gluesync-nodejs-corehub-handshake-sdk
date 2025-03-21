@@ -52,8 +52,8 @@ describe('GluesyncClient', () => {
       configurable: true
     });
     
-    // Determine host based on environment (CI vs local)
-    const host = process.env.CI ? 'corehub' : 'localhost';
+    // Always use localhost since CoreHub is running in the same container
+    const host = 'localhost';
     
     // Create client instance with the actual license file
     client = new GluesyncClient({
