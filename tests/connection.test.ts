@@ -2,7 +2,7 @@
  * Tests for the WebSocketConnection class.
  */
 
-import * as WebSocket from 'ws';
+import WebSocket from 'ws';
 import { EventEmitter } from 'events';
 import { WebSocketConnection } from '../src/connection';
 import {
@@ -72,9 +72,14 @@ describe('WebSocketConnection', () => {
       1000
     );
     
-    // Spy on WebSocket constructor
+    // Spy on WebSocket prototype
     jest.spyOn(WebSocket.prototype, 'send').mockImplementation(
-      function(this: any, data: any, callback?: (err?: Error) => void) {
+      function(this: any, data: any, options?: any, callback?: any) {
+        // Handle both function signatures
+        if (typeof options === 'function') {
+          callback = options;
+        }
+        
         if (callback) callback();
         
         // If the message is 'hello', simulate a token response
@@ -112,7 +117,7 @@ describe('WebSocketConnection', () => {
   test('should handle connection errors', async () => {
     // Mock WebSocket to throw an error on connection
     jest.spyOn(WebSocket.prototype, 'on').mockImplementation(
-      function(this: any, event: string, listener: (...args: any[]) => void) {
+      function(this: any, event: string | symbol, listener: (...args: any[]) => void) {
         if (event === 'open') {
           // Don't emit open, emit error instead
           setTimeout(() => {
@@ -133,7 +138,12 @@ describe('WebSocketConnection', () => {
   test('should handle authentication errors', async () => {
     // Mock WebSocket to send an error response instead of a token
     jest.spyOn(WebSocket.prototype, 'send').mockImplementation(
-      function(this: any, data: any, callback?: (err?: Error) => void) {
+      function(this: any, data: any, options?: any, callback?: any) {
+        // Handle both function signatures
+        if (typeof options === 'function') {
+          callback = options;
+        }
+        
         if (callback) callback();
         
         // If the message is 'hello', simulate a close with authentication error

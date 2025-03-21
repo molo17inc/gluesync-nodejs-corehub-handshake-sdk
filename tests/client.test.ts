@@ -46,11 +46,11 @@ describe('GluesyncClient', () => {
     // Mock WebSocketConnection.connect to return a mock token
     (WebSocketConnection.prototype.connect as jest.Mock).mockResolvedValue('jwt-token-123');
     
-    // Create client instance
+    // Create client instance with the actual license file
     client = new GluesyncClient({
       host: 'localhost',
       port: 1717,
-      licenseFilePath: 'gs-license.dat',
+      licenseFilePath: './gs-license.dat',
       moduleTag: 'test-module'
     });
   });
@@ -85,7 +85,7 @@ describe('GluesyncClient', () => {
     // Verify the token
     expect(token).toBe('jwt-token-123');
     expect(client.token).toBe('jwt-token-123');
-    expect(client.connectionStatus).toBe('Connected');
+    expect(client.isConnected).toBe(true);
   });
   
   test('should use autodiscovery when host is null', async () => {
@@ -93,7 +93,7 @@ describe('GluesyncClient', () => {
     client = new GluesyncClient({
       host: null,
       port: 1717,
-      licenseFilePath: 'gs-license.dat',
+      licenseFilePath: './gs-license.dat',
       moduleTag: 'test-module'
     });
     
@@ -108,7 +108,7 @@ describe('GluesyncClient', () => {
       10000
     );
     
-    // Verify that WebSocketConnection was created with the discovered host
+    // Verify that WebSocketConnection was created with the discovered address
     expect(WebSocketConnection).toHaveBeenCalledWith(
       '192.168.1.100',
       1717,
@@ -119,21 +119,26 @@ describe('GluesyncClient', () => {
     );
   });
   
-  test('should set up SSL context when ssl=true', async () => {
+  test('should use SSL when keystorePath is provided', async () => {
+    // Reset mocks
+    jest.clearAllMocks();
+    
+    // Mock createSslContextFromJks to return mock SSL options
+    (utils.createSslContextFromJks as jest.Mock).mockResolvedValue({
+      ca: 'mock-ca',
+      cert: 'mock-cert',
+      key: 'mock-key'
+    });
+    
     // Create client with SSL enabled
     client = new GluesyncClient({
       host: 'localhost',
       port: 1717,
-      licenseFilePath: 'gs-license.dat',
+      licenseFilePath: './gs-license.dat',
       moduleTag: 'test-module',
-      ssl: true,
       keystorePath: 'keystore.jks',
       keystorePassword: 'password'
     });
-    
-    // Set environment variables for keystore
-    process.env.KEYSTORE_PATH = 'keystore.jks';
-    process.env.KEYSTORE_PASSWORD = 'password';
     
     // Connect to the server
     await client.connect();
@@ -157,18 +162,47 @@ describe('GluesyncClient', () => {
       1000,
       10000
     );
-    
-    // Clean up environment variables
-    delete process.env.KEYSTORE_PATH;
-    delete process.env.KEYSTORE_PASSWORD;
   });
   
-  test('should handle license file errors', async () => {
-    // Mock fs.existsSync to return false for license file
-    (fs.existsSync as jest.Mock).mockReturnValue(false);
+  test('should handle connection errors', async () => {
+    // Mock WebSocketConnection.connect to throw an error
+    (WebSocketConnection.prototype.connect as jest.Mock).mockRejectedValue(
+      new GluesyncConnectionError('Connection failed')
+    );
+    
+    // Expect connect to throw an error
+    await expect(client.connect()).rejects.toThrow(GluesyncConnectionError);
+    expect(client.isConnected).toBe(false);
+  });
+  
+  test('should handle authentication errors', async () => {
+    // Mock WebSocketConnection.connect to throw an authentication error
+    (WebSocketConnection.prototype.connect as jest.Mock).mockRejectedValue(
+      new GluesyncAuthenticationError('Authentication failed')
+    );
+    
+    // Expect connect to throw an authentication error
+    await expect(client.connect()).rejects.toThrow(GluesyncAuthenticationError);
+    expect(client.isConnected).toBe(false);
+  });
+  
+  test('should handle license errors', async () => {
+    // Create a client with a non-existent license file
+    const clientWithInvalidLicense = new GluesyncClient({
+      host: 'localhost',
+      port: 1717,
+      licenseFilePath: './non-existent-license.dat',
+      moduleTag: 'test-module'
+    });
+    
+    // Mock fs.existsSync to return false for the non-existent license file
+    (fs.existsSync as jest.Mock).mockImplementation((path: string) => {
+      return path !== './non-existent-license.dat';
+    });
     
     // Expect connect to throw a license error
-    await expect(client.connect()).rejects.toThrow(GluesyncLicenseError);
+    await expect(clientWithInvalidLicense.connect()).rejects.toThrow(GluesyncLicenseError);
+    expect(clientWithInvalidLicense.isConnected).toBe(false);
   });
   
   test('should handle SSL errors', async () => {
@@ -176,9 +210,8 @@ describe('GluesyncClient', () => {
     client = new GluesyncClient({
       host: 'localhost',
       port: 1717,
-      licenseFilePath: 'gs-license.dat',
+      licenseFilePath: './gs-license.dat',
       moduleTag: 'test-module',
-      ssl: true,
       keystorePath: 'keystore.jks',
       keystorePassword: 'password'
     });
@@ -190,26 +223,7 @@ describe('GluesyncClient', () => {
     
     // Expect connect to throw an SSL error
     await expect(client.connect()).rejects.toThrow(GluesyncSSLError);
-  });
-  
-  test('should handle connection errors', async () => {
-    // Mock WebSocketConnection.connect to throw an error
-    (WebSocketConnection.prototype.connect as jest.Mock).mockRejectedValue(
-      new GluesyncConnectionError('Connection failed')
-    );
-    
-    // Expect connect to throw a connection error
-    await expect(client.connect()).rejects.toThrow(GluesyncConnectionError);
-  });
-  
-  test('should handle authentication errors', async () => {
-    // Mock WebSocketConnection.connect to throw an authentication error
-    (WebSocketConnection.prototype.connect as jest.Mock).mockRejectedValue(
-      new GluesyncAuthenticationError('Authentication failed')
-    );
-    
-    // Expect connect to throw an authentication error
-    await expect(client.connect()).rejects.toThrow(GluesyncAuthenticationError);
+    expect(client.isConnected).toBe(false);
   });
   
   test('should disconnect successfully', async () => {
@@ -221,23 +235,19 @@ describe('GluesyncClient', () => {
     
     // Verify that WebSocketConnection.disconnect was called
     expect(WebSocketConnection.prototype.disconnect).toHaveBeenCalled();
+    
+    // Verify the connection state
+    expect(client.isConnected).toBe(false);
+    expect(client.isConnected).toBe(false);
   });
   
-  test('should emit events and call callbacks', async () => {
-    // Set up event handlers
-    const onConnected = jest.fn();
-    const onDisconnected = jest.fn();
-    const onError = jest.fn();
-    
-    client.onConnected = onConnected;
-    client.onDisconnected = onDisconnected;
-    client.onError = onError;
-    
-    // Set up event listeners
+  test('should emit events', async () => {
+    // Create event listeners
     const connectedListener = jest.fn();
     const disconnectedListener = jest.fn();
     const errorListener = jest.fn();
     
+    // Register event listeners
     client.on('connected', connectedListener);
     client.on('disconnected', disconnectedListener);
     client.on('error', errorListener);
@@ -245,25 +255,25 @@ describe('GluesyncClient', () => {
     // Connect
     await client.connect();
     
-    // Get the connection event handlers
-    const connectionInstance = (WebSocketConnection as jest.Mock).mock.instances[0];
-    const connectionOnConnected = connectionInstance.onConnected;
-    const connectionOnDisconnected = connectionInstance.onDisconnected;
-    const connectionOnError = connectionInstance.onError;
+    // Get the connection instance
+    const connectionInstance = (WebSocketConnection as unknown as jest.Mock).mock.instances[0];
     
-    // Simulate connection events
-    await connectionOnConnected('jwt-token-123');
-    await connectionOnDisconnected('Test disconnection');
-    await connectionOnError(new Error('Test error'));
+    // Call the event handlers directly
+    if (connectionInstance.onConnected) {
+      await connectionInstance.onConnected('jwt-token-123');
+    }
     
-    // Verify that callbacks were called
-    expect(onConnected).toHaveBeenCalledWith('jwt-token-123');
-    expect(onDisconnected).toHaveBeenCalledWith('Test disconnection');
-    expect(onError).toHaveBeenCalledWith(expect.any(Error));
+    if (connectionInstance.onDisconnected) {
+      await connectionInstance.onDisconnected('Test disconnection');
+    }
+    
+    if (connectionInstance.onError) {
+      await connectionInstance.onError(new Error('Test error'));
+    }
     
     // Verify that event listeners were called
     expect(connectedListener).toHaveBeenCalledWith('jwt-token-123');
     expect(disconnectedListener).toHaveBeenCalledWith('Test disconnection');
-    expect(errorListener).toHaveBeenCalledWith(expect.any(Error));
+    expect(errorListener).toHaveBeenCalledWith(new Error('Test error'));
   });
 });

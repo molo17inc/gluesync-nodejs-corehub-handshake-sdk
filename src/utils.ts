@@ -24,7 +24,7 @@ import * as fs from 'fs-extra';
 import * as forge from 'node-forge';
 import * as tls from 'tls';
 import JSZip from 'jszip';
-import { promisify } from 'util';
+// import { promisify } from 'util';
 import { randomBytes } from 'crypto';
 import { GluesyncSSLError } from './exceptions';
 
@@ -38,7 +38,7 @@ import { GluesyncSSLError } from './exceptions';
  */
 export async function createSslContextFromJks(
   keystorePath: string,
-  keystorePassword: string
+  _keystorePassword: string
 ): Promise<tls.ConnectionOptions> {
   try {
     // Read the JKS file

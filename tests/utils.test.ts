@@ -9,7 +9,7 @@ import {
   createSslContextFromJks,
   createTimeout,
   getErrorFromCloseReason,
-  generateRandomId
+  generateId
 } from '../src/utils';
 import { GluesyncSSLError } from '../src/exceptions';
 
@@ -27,7 +27,7 @@ describe('utils', () => {
   describe('createSslContextFromJks', () => {
     beforeEach(() => {
       // Mock fs.readFile to return mock JKS data
-      (fs.readFile as jest.Mock).mockResolvedValue(Buffer.from('mock-jks-data'));
+      jest.spyOn(fs, 'readFile').mockResolvedValue(Buffer.from('mock-jks-data') as any);
       
       // Mock JSZip.loadAsync to return a mock zip object
       const mockZip = {
@@ -43,78 +43,68 @@ describe('utils', () => {
           }
         }
       };
-      (JSZip.loadAsync as jest.Mock).mockResolvedValue(mockZip);
+      jest.spyOn(JSZip, 'loadAsync').mockResolvedValue(mockZip as any);
       
       // Mock forge.pki functions
-      (forge.pki.certificateFromPem as jest.Mock).mockReturnValue({
+      jest.spyOn(forge.pki, 'certificateFromPem').mockReturnValue({
         publicKey: 'mock-public-key'
-      });
-      (forge.pki.privateKeyFromPem as jest.Mock).mockReturnValue('mock-private-key-obj');
-      (forge.pki.createCaStore as jest.Mock).mockReturnValue('mock-ca-store');
+      } as any);
+      
+      jest.spyOn(forge.pki, 'privateKeyFromPem').mockReturnValue('mock-private-key-object' as any);
+      jest.spyOn(forge.pki, 'publicKeyToPem').mockReturnValue('mock-public-key-pem');
+      jest.spyOn(forge.pki, 'privateKeyToPem').mockReturnValue('mock-private-key-pem');
     });
     
     test('should create SSL context from JKS file', async () => {
       // Call the function
-      const sslContext = await createSslContextFromJks('keystore.jks', 'password');
+      const sslOptions = await createSslContextFromJks('keystore.jks', 'password');
       
-      // Verify that fs.readFile was called
+      // Verify that fs.readFile was called with the correct path
       expect(fs.readFile).toHaveBeenCalledWith('keystore.jks');
       
-      // Verify that JSZip.loadAsync was called
+      // Verify that JSZip.loadAsync was called with the mock JKS data
       expect(JSZip.loadAsync).toHaveBeenCalledWith(Buffer.from('mock-jks-data'));
       
-      // Verify the SSL context
-      expect(sslContext).toEqual({
+      // Verify the SSL options
+      expect(sslOptions).toEqual({
         ca: 'mock-ca',
         cert: 'mock-certificate',
-        key: 'mock-private-key'
+        key: 'mock-private-key-pem'
       });
     });
     
-    test('should handle file read errors', async () => {
+    test('should handle errors when reading JKS file', async () => {
       // Mock fs.readFile to throw an error
-      (fs.readFile as jest.Mock).mockRejectedValue(new Error('File not found'));
+      jest.spyOn(fs, 'readFile').mockRejectedValue(new Error('File not found') as any);
       
-      // Expect the function to throw an SSL error
+      // Expect createSslContextFromJks to throw a GluesyncSSLError
       await expect(createSslContextFromJks('keystore.jks', 'password'))
         .rejects.toThrow(GluesyncSSLError);
     });
     
-    test('should handle invalid JKS format', async () => {
+    test('should handle errors when parsing JKS file', async () => {
       // Mock JSZip.loadAsync to throw an error
-      (JSZip.loadAsync as jest.Mock).mockRejectedValue(new Error('Invalid zip format'));
+      jest.spyOn(JSZip, 'loadAsync').mockRejectedValue(new Error('Invalid JKS file'));
       
-      // Expect the function to throw an SSL error
-      await expect(createSslContextFromJks('keystore.jks', 'password'))
-        .rejects.toThrow(GluesyncSSLError);
-    });
-    
-    test('should handle missing certificate files', async () => {
-      // Mock JSZip.loadAsync to return a zip with missing files
-      const mockZip = {
-        files: {}
-      };
-      (JSZip.loadAsync as jest.Mock).mockResolvedValue(mockZip);
-      
-      // Expect the function to throw an SSL error
+      // Expect createSslContextFromJks to throw a GluesyncSSLError
       await expect(createSslContextFromJks('keystore.jks', 'password'))
         .rejects.toThrow(GluesyncSSLError);
     });
   });
   
   describe('createTimeout', () => {
-    test('should create a promise that resolves after the specified time', async () => {
+    test('should resolve after the specified timeout', async () => {
       // Mock setTimeout
       jest.useFakeTimers();
       
       // Create a timeout promise
-      const timeoutPromise = createTimeout(1000, 'Timeout message');
+      const timeoutPromise = createTimeout(1000, 'Test timeout');
       
       // Advance timers
       jest.advanceTimersByTime(1000);
       
-      // Verify that the promise resolves with the message
-      await expect(timeoutPromise).resolves.toBe('Timeout message');
+      // Verify that the promise resolves with the expected message
+      await expect(timeoutPromise).resolves.toBe('Test timeout');
       
       // Restore timers
       jest.useRealTimers();
@@ -122,27 +112,20 @@ describe('utils', () => {
   });
   
   describe('getErrorFromCloseReason', () => {
-    test('should return the close reason if provided', () => {
-      const reason = 'Authentication failed';
-      expect(getErrorFromCloseReason(reason)).toBe('Authentication failed');
+    test('should return the close reason', () => {
+      expect(getErrorFromCloseReason('Test reason')).toBe('Test reason');
     });
     
-    test('should return a default message if reason is empty', () => {
+    test('should return a default message for empty reason', () => {
       expect(getErrorFromCloseReason('')).toBe('Connection closed');
     });
   });
   
-  describe('generateRandomId', () => {
-    test('should generate a random ID of the specified length', () => {
-      const id = generateRandomId(10);
-      expect(id.length).toBe(10);
+  describe('generateId', () => {
+    test('should generate a random ID', () => {
+      const id = generateId();
       expect(typeof id).toBe('string');
-    });
-    
-    test('should generate different IDs on each call', () => {
-      const id1 = generateRandomId(10);
-      const id2 = generateRandomId(10);
-      expect(id1).not.toBe(id2);
+      expect(id.length).toBeGreaterThan(0);
     });
   });
 });

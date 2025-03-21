@@ -21,7 +21,7 @@
  */
 
 import * as dgram from 'dgram';
-import { createTimeout, generateId } from './utils';
+import { /* createTimeout, */ generateId } from './utils';
 import debug from 'debug';
 
 // Set up debug logger

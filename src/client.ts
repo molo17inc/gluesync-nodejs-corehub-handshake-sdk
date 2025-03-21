@@ -31,7 +31,7 @@ import { getCorehubAddress } from './discovery';
 import {
   GluesyncError,
   GluesyncConnectionError,
-  GluesyncAuthenticationError,
+  // GluesyncAuthenticationError,
   GluesyncLicenseError,
   GluesyncSSLError
 } from './exceptions';

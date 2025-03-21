@@ -58,7 +58,7 @@ async function main() {
     const token = await client.connect();
     
     console.log(`Connection established with token: ${token.substring(0, 20)}...`);
-    console.log(`Connection status: ${client.connectionStatus}`);
+    console.log(`Connected: ${client.isConnected}`);
     
     // Keep the connection alive for a while
     const connectionDuration = 10000; // 10 seconds
