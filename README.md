@@ -1,93 +1,252 @@
-# gluesync-nodejs-corehub-handshake-sdk
+# Gluesync Node.js SDK
 
+A Node.js client-side SDK for connecting to Gluesync CoreHub services. This SDK enables external modules to establish authenticated WebSocket connections with Gluesync CoreHub, implementing the handshake process required for secure communication.
 
+## Features
 
-## Getting started
-
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
-
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
-
-## Add your files
-
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
-
-```
-cd existing_repo
-git remote add origin https://gitlab.com/molo17-public/gluesync/gluesync-nodejs-corehub-handshake-sdk.git
-git branch -M main
-git push -uf origin main
-```
-
-## Integrate with your tools
-
-- [ ] [Set up project integrations](https://gitlab.com/molo17-public/gluesync/gluesync-nodejs-corehub-handshake-sdk/-/settings/integrations)
-
-## Collaborate with your team
-
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
-
-## Test and Deploy
-
-Use the built-in continuous integration in GitLab.
-
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
-
-***
-
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+- **Secure WebSocket Connections**: Support for both WS and WSS using JKS certificates
+- **Automated Handshake Process**: Handles the complete authentication flow with Gluesync CoreHub
+- **License Management**: Validates and processes license files required for authentication
+- **Keep-Alive Mechanism**: Implements ping/pong protocol to maintain persistent connections
+- **UDP Autodiscovery**: Automatically discovers CoreHub on the local network
+- **Promise-based API**: Built on top of modern async JavaScript/TypeScript
+- **Cross-Platform Compatibility**: Works on Linux, macOS, and Windows
+- **TypeScript Support**: Includes type definitions for improved developer experience
 
 ## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+```bash
+npm install gluesync-sdk
+# or
+yarn add gluesync-sdk
+```
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+## Quick Start
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+```typescript
+import { GluesyncClient } from 'gluesync-sdk';
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+async function main() {
+  // Initialize the client with CoreHub address and license file path
+  // For fixed address:
+  const client = new GluesyncClient({
+    host: 'localhost',
+    port: 1717,
+    licenseFilePath: '/path/to/gs-license.dat',
+    moduleTag: 'my-module'
+  });
+  
+  // Or use UDP autodiscovery (set host to null)
+  // const client = new GluesyncClient({
+  //   host: null,  // Will use UDP autodiscovery to find CoreHub
+  //   port: 1717,
+  //   licenseFilePath: '/path/to/gs-license.dat',
+  //   moduleTag: 'my-module'
+  // });
+  
+  // Connect to CoreHub
+  await client.connect();
+  
+  // The JWT token for API requests is available after connection
+  const jwtToken = client.token;
+  console.log(`Connected with token: ${jwtToken}`);
+  
+  // Do your work here
+  
+  // Disconnect when done
+  await client.disconnect();
+}
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+main().catch(console.error);
+```
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+## Advanced Usage
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+### Using UDP Autodiscovery
+
+The SDK can automatically discover CoreHub on the local network using UDP:
+
+```typescript
+import { GluesyncClient } from 'gluesync-sdk';
+
+async function main() {
+  // Initialize the client without specifying a host to use autodiscovery
+  const client = new GluesyncClient({
+    // host parameter is omitted to enable autodiscovery
+    licenseFilePath: '/path/to/gs-license.dat',
+    moduleTag: 'my-module'
+  });
+  
+  // Connect will automatically discover the CoreHub on the network
+  await client.connect();
+  
+  // Do your work here
+  
+  // Disconnect when done
+  await client.disconnect();
+}
+
+main().catch(console.error);
+```
+
+You can also use the environment variable `CORE_HUB_ADDRESS` to bypass autodiscovery:
+
+```typescript
+// Set this to bypass autodiscovery
+process.env.CORE_HUB_ADDRESS = '192.168.1.100';
+```
+
+### Using SSL/TLS with JKS Certificates
+
+```typescript
+import { GluesyncClient } from 'gluesync-sdk';
+
+async function main() {
+  const client = new GluesyncClient({
+    host: 'corehub.example.com',
+    port: 1717,
+    licenseFilePath: '/path/to/gs-license.dat',
+    moduleTag: 'my-module',
+    ssl: true,
+    keystorePath: '/path/to/Gluesync.com.jks',
+    keystorePassword: 'your-password'
+  });
+  
+  await client.connect();
+  // ...
+}
+
+main().catch(console.error);
+```
+
+### Setting Up Event Handlers
+
+```typescript
+import { GluesyncClient } from 'gluesync-sdk';
+
+// Option 1: Using callback functions
+async function main() {
+  const client = new GluesyncClient({
+    host: 'localhost',
+    port: 1717,
+    licenseFilePath: '/path/to/gs-license.dat',
+    moduleTag: 'my-module'
+  });
+  
+  // Set up event handlers
+  client.onConnected = (token) => {
+    console.log(`Connected! Received token: ${token}`);
+  };
+  
+  client.onDisconnected = (reason) => {
+    console.log(`Disconnected: ${reason}`);
+  };
+  
+  client.onError = (error) => {
+    console.log(`Error: ${error}`);
+  };
+  
+  await client.connect();
+  
+  // Keep the connection alive for some time
+  await new Promise(resolve => setTimeout(resolve, 3600000));
+  
+  await client.disconnect();
+}
+
+// Option 2: Using event emitter API
+async function mainWithEvents() {
+  const client = new GluesyncClient({
+    host: 'localhost',
+    port: 1717,
+    licenseFilePath: '/path/to/gs-license.dat',
+    moduleTag: 'my-module'
+  });
+  
+  // Set up event listeners
+  client.on('connected', (token) => {
+    console.log(`Connected! Received token: ${token}`);
+  });
+  
+  client.on('disconnected', (reason) => {
+    console.log(`Disconnected: ${reason}`);
+  });
+  
+  client.on('error', (error) => {
+    console.log(`Error: ${error}`);
+  });
+  
+  await client.connect();
+  
+  // Keep the connection alive for some time
+  await new Promise(resolve => setTimeout(resolve, 3600000));
+  
+  await client.disconnect();
+}
+
+main().catch(console.error);
+```
+
+## API Reference
+
+### `GluesyncClient`
+
+The main class for interacting with Gluesync CoreHub.
+
+#### Constructor Options
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| host | string \| null | No | null | The hostname or IP of the CoreHub. If null, autodiscovery will be used |
+| port | number | No | 1717 | The port number for the CoreHub WebSocket |
+| licenseFilePath | string | No | "gs-license.dat" | Path to the gs-license.dat file |
+| moduleTag | string | No | "nodejs-module" | The module identifier tag |
+| ssl | boolean | No | false | Whether to use SSL/TLS |
+| keystorePath | string | No | null | Path to JKS keystore file (required if ssl=true) |
+| keystorePassword | string | No | null | Password for the JKS keystore |
+| pingInterval | number | No | 1000 | Interval in milliseconds between ping messages |
+| timeout | number | No | 10000 | Connection timeout in milliseconds |
+| discoveryStartPort | number | No | 1717 | The base port number for UDP discovery |
+| discoveryPortRange | number | No | 10 | Number of ports to scan for UDP discovery |
+
+#### Methods
+
+- **`connect()`**: Establishes a WebSocket connection to the CoreHub
+- **`disconnect()`**: Closes the WebSocket connection
+
+#### Properties
+
+- **`token`**: The JWT token received from CoreHub
+- **`connectionStatus`**: Current status of the connection
+- **`isConnected`**: Returns true if connected, false otherwise
+
+#### Event Handlers
+
+- **`onConnected(token)`**: Called when connection is successfully established
+- **`onDisconnected(reason)`**: Called when connection is closed
+- **`onError(error)`**: Called when an error occurs
+
+#### Events (EventEmitter API)
+
+- **`connected`**: Emitted when connection is successfully established
+- **`disconnected`**: Emitted when connection is closed
+- **`error`**: Emitted when an error occurs
 
 ## License
-For open source projects, say how it is licensed.
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+Gluesync Node.js SDK is dual-licensed under the following licenses:
+
+1. GNU General Public License (GPL) Version 3
+   You may use, modify, and distribute this software under the terms of the GPL v3.
+   See the LICENSE-GPL file or <http://www.gnu.org/licenses/gpl-3.0.html> for details.
+   This option is available at no cost, but any derivative works must also be licensed under GPL v3.
+
+2. MOLO17 Commercial License
+   Alternatively, you may use this software under the MOLO17 Commercial License,
+   which includes a warranty and permits proprietary use. Contact MOLO17 at info@molo17.com
+   for licensing terms and conditions.
+
+You must choose one of these licenses to use this software. Using this software implies
+acceptance of one of these licenses.
+
+Copyright (C) 2025 MOLO17. All rights reserved.
