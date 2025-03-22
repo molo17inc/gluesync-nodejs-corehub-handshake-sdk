@@ -20,9 +20,12 @@ stages:
   - lint
   - build
   - test
+  - integration-test
 
 variables:
   NODE_VERSION: "20"
+  CI: "true"
+  JEST_TIMEOUT: "60000"
 
 # Cache node_modules to speed up builds
 cache:
@@ -65,25 +68,29 @@ build:
     paths:
       - dist/
 
-# Test job - run Jest tests
+# Unit test job - run Jest unit tests
 test:
   stage: test
-  image: molo17/gluesync-core-hub:latest
-  variables:
-    # Increase test timeout to allow for service startup
-    JEST_TIMEOUT: 30000
+  image: node:${NODE_VERSION}-alpine
   script:
-    # Install Node.js and npm (since this is based on gradle:8.8-jdk21)
-    - apt-get update
-    - apt-get install -y curl
-    - curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
-    - apt-get install -y nodejs
-    - 'echo "Node.js version: $(node -v)"'
-    - 'echo "npm version: $(npm -v)"'
-    # Wait for CoreHub to be ready (it's already running in the same container)
-    - echo "CoreHub is running in the same container"
-    # Run tests
-    - npm test
+    - echo "Running unit tests..."
+    - npm run test:unit
+  dependencies:
+    - setup
+    - build
+
+# Integration test job - run tests with mocked CoreHub functionality
+integration-test:
+  stage: integration-test
+  image: node:${NODE_VERSION}-alpine
+  variables:
+    # Increase test timeout for integration tests
+    JEST_TIMEOUT: 60000
+    # Set CI flag to true for test environment detection
+    CI: "true"
+  script:
+    - echo "Running integration tests with mocked CoreHub functionality..."
+    - npm run test:integration
   dependencies:
     - setup
     - build

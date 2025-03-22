@@ -8,6 +8,8 @@
     "build": "tsc",
     "clean": "rimraf dist",
     "test": "jest",
+    "test:unit": "jest --testPathIgnorePatterns=integration",
+    "test:integration": "jest tests/integration",
     "lint": "eslint src --ext .ts",
     "prepare": "npm run build",
     "example": "ts-node examples/example.ts"
