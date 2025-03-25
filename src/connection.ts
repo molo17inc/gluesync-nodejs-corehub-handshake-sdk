@@ -142,6 +142,7 @@ export class WebSocketConnection extends EventEmitter {
       const wsOptions = {
         headers: this.headers,
         handshakeTimeout: this.timeout,
+        rejectUnauthorized: false,  // Disable SSL certificate verification
         ...this.sslOptions
       };
       
