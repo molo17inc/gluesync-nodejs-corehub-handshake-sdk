@@ -48,6 +48,7 @@ export class GluesyncClient extends EventEmitter {
   private port: number;
   private moduleTag: string;
   private useSSL: boolean;
+  private verifySsl: boolean;
   private pingInterval: number;
   private timeout: number;
   private discoveryStartPort: number;
@@ -82,6 +83,7 @@ export class GluesyncClient extends EventEmitter {
     licenseFilePath = 'gs-license.dat',
     moduleTag = 'nodejs-module',
     ssl = false,
+    verifySsl = true,
     keystorePath = null,
     keystorePassword = null,
     pingInterval = 1000,
@@ -94,6 +96,7 @@ export class GluesyncClient extends EventEmitter {
     licenseFilePath?: string;
     moduleTag?: string;
     ssl?: boolean;
+    verifySsl?: boolean;
     keystorePath?: string | null;
     keystorePassword?: string | null;
     pingInterval?: number;
@@ -107,6 +110,7 @@ export class GluesyncClient extends EventEmitter {
     this.port = port;
     this.moduleTag = moduleTag;
     this.useSSL = ssl;
+    this.verifySsl = verifySsl;
     this.pingInterval = pingInterval;
     this.timeout = timeout;
     this.discoveryStartPort = discoveryStartPort;
@@ -236,7 +240,8 @@ export class GluesyncClient extends EventEmitter {
             'CORE_HUB_ADDRESS',
             this.discoveryStartPort,
             this.discoveryPortRange,
-            this.timeout
+            this.timeout,
+            this.verifySsl
           );
           
           // Save the discovered host
@@ -270,7 +275,8 @@ export class GluesyncClient extends EventEmitter {
         this.getConnectionHeaders(),
         this.sslOptions,
         this.pingInterval,
-        this.timeout
+        this.timeout,
+        this.verifySsl
       );
       
       // Set up event handlers

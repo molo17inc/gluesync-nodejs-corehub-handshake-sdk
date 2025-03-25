@@ -41,6 +41,7 @@ export class CoreHubDiscovery {
   private portRange: number;
   private portList: number[];
   private timeoutMs: number;
+  private verifySsl: boolean;
   private socket: dgram.Socket | null = null;
   private discoveryPromise: Promise<string> | null = null;
   private discoveryResolve: ((value: string) => void) | null = null;
@@ -58,11 +59,13 @@ export class CoreHubDiscovery {
   constructor(
     startPort: number = DEFAULT_START_PORT,
     portRange: number = DEFAULT_PORT_RANGE,
-    timeoutMs: number = DEFAULT_TIMEOUT_MS
+    timeoutMs: number = DEFAULT_TIMEOUT_MS,
+    verifySsl: boolean = true
   ) {
     this.startPort = startPort;
     this.portRange = portRange;
     this.timeoutMs = timeoutMs;
+    this.verifySsl = verifySsl;
     this.portList = Array.from(
       { length: portRange },
       (_, i) => startPort + i + 1
@@ -82,7 +85,7 @@ export class CoreHubDiscovery {
    * @throws Error if unable to bind to a socket or other network issues
    * @throws Error if no broadcast is received within the timeout period
    */
-  async discoverCoreHub(): Promise<string> {
+  async discoverCoreHub(verifySsl: boolean = this.verifySsl): Promise<string> {
     if (this.discoveryPromise) {
       log('Discovery already in progress, returning existing promise');
       return this.discoveryPromise;
@@ -210,6 +213,7 @@ export class CoreHubDiscovery {
  * @param startPort - The base port number to use for discovery
  * @param portRange - The number of ports to scan (starting from startPort + 1)
  * @param timeoutMs - Timeout in milliseconds to wait for discovery
+ * @param verifySsl - Whether to verify SSL certificates (default: true)
  * @returns Promise resolving to the IP address of the CoreHub as a string
  * @throws Error if unable to discover the CoreHub
  */
@@ -217,7 +221,8 @@ export async function getCorehubAddress(
   envVarName: string = 'CORE_HUB_ADDRESS',
   startPort: number = DEFAULT_START_PORT,
   portRange: number = DEFAULT_PORT_RANGE,
-  timeoutMs: number = DEFAULT_TIMEOUT_MS
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  verifySsl: boolean = true
 ): Promise<string> {
   // First check if the address is provided via environment variable
   const coreHubAddress = process.env[envVarName];
@@ -230,8 +235,8 @@ export async function getCorehubAddress(
   // If not provided, try to discover it on the network
   log('CoreHub address not provided, attempting autodiscovery...');
   try {
-    const discovery = new CoreHubDiscovery(startPort, portRange, timeoutMs);
-    return await discovery.discoverCoreHub();
+    const discovery = new CoreHubDiscovery(startPort, portRange, timeoutMs, verifySsl);
+    return await discovery.discoverCoreHub(verifySsl);
   } catch (error) {
     log('Failed to discover CoreHub: %s', error);
     throw new Error(
