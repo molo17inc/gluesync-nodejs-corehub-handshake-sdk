@@ -51,6 +51,7 @@ export class WebSocketConnection extends EventEmitter {
   private sslOptions: tls.ConnectionOptions | null;
   private pingInterval: number;
   private timeout: number;
+  private verifySsl: boolean;
   
   private ws: WebSocket | null = null;
   private _token: string | null = null;
@@ -71,6 +72,7 @@ export class WebSocketConnection extends EventEmitter {
    * @param sslOptions - SSL/TLS options for secure connections (optional)
    * @param pingInterval - Interval in milliseconds between ping messages
    * @param timeout - Connection timeout in milliseconds
+   * @param verifySsl - Whether to verify SSL certificates (default: true)
    */
   constructor(
     host: string,
@@ -78,7 +80,8 @@ export class WebSocketConnection extends EventEmitter {
     headers: Record<string, string>,
     sslOptions: tls.ConnectionOptions | null = null,
     pingInterval: number = 1000,
-    timeout: number = 10000
+    timeout: number = 10000,
+    verifySsl: boolean = true
   ) {
     super();
     this.host = host;
@@ -87,6 +90,7 @@ export class WebSocketConnection extends EventEmitter {
     this.sslOptions = sslOptions;
     this.pingInterval = pingInterval;
     this.timeout = timeout;
+    this.verifySsl = verifySsl;
     
     log('WebSocketConnection initialized for %s:%d', host, port);
   }
@@ -142,7 +146,7 @@ export class WebSocketConnection extends EventEmitter {
       const wsOptions = {
         headers: this.headers,
         handshakeTimeout: this.timeout,
-        rejectUnauthorized: false,  // Disable SSL certificate verification
+        rejectUnauthorized: this.verifySsl,  // Use verifySsl parameter
         ...this.sslOptions
       };
       
