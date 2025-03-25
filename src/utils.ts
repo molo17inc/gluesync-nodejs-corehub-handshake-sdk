@@ -20,74 +20,70 @@
  * Copyright (C) 2025 MOLO17. All rights reserved.
  */
 
-import * as fs from 'fs-extra';
+import * as fs from 'fs/promises';
 import * as forge from 'node-forge';
 import * as tls from 'tls';
 import JSZip from 'jszip';
-// import { promisify } from 'util';
 import { randomBytes } from 'crypto';
-import { GluesyncSSLError } from './exceptions';
+
+// Assume a logger is available
+const logger = console; // Replace with actual logger if available
 
 /**
  * Create an SSL/TLS context from a Java KeyStore (JKS) file.
  *
  * @param keystorePath - Path to the JKS file
  * @param keystorePassword - Password for the JKS file
+ * @param alias - Alias for the certificate (optional)
+ * @param keyPassword - Password for the private key (optional)
  * @returns SSL/TLS options object for use with Node.js tls/https module
- * @throws GluesyncSSLError if keystore processing fails
+ * @throws Error if keystore processing fails
  */
 export async function createSslContextFromJks(
   keystorePath: string,
-  _keystorePassword: string
+  keystorePassword: string,
+  alias?: string,
+  keyPassword?: string
 ): Promise<tls.ConnectionOptions> {
+  logger.info(`Creating SSL context from keystore: ${keystorePath}`);
+
   try {
-    // Read the JKS file
     const jksData = await fs.readFile(keystorePath);
-    
-    // Parse the JKS file using JSZip
     const zip = await JSZip.loadAsync(jksData);
-    
-    // Look for certificates
     const certs: string[] = [];
-    
-    // Process each file in the JKS
-    for (const [filename, file] of Object.entries(zip.files)) {
-      if (filename.endsWith('.cert') || filename.endsWith('.crt') || filename.endsWith('.pem')) {
-        const content = await file.async('string');
-        
-        // Verify this is a PEM certificate
-        if (content.includes('-----BEGIN CERTIFICATE-----')) {
-          certs.push(content);
-        } else {
-          // Try to convert DER to PEM if needed
-          try {
-            const derBytes = forge.util.createBuffer(content);
-            const asn1 = forge.asn1.fromDer(derBytes);
-            const cert = forge.pki.certificateFromAsn1(asn1);
-            const pemCert = forge.pki.certificateToPem(cert);
-            certs.push(pemCert);
-          } catch (e) {
-            console.warn('Failed to parse certificate:', e);
-          }
+
+    for (const [, file] of Object.entries(zip.files)) {
+      const content = await file.async('string');
+      if (content.includes('-----BEGIN CERTIFICATE-----')) {
+        certs.push(content);
+      } else {
+        try {
+          const derBytes = forge.util.createBuffer(content);
+          const asn1 = forge.asn1.fromDer(derBytes);
+          const cert = forge.pki.certificateFromAsn1(asn1);
+          const pemCert = forge.pki.certificateToPem(cert);
+          certs.push(pemCert);
+        } catch (e) {
+          logger.warn('Failed to parse certificate:', e);
         }
       }
     }
-    
+
     if (certs.length === 0) {
-      throw new GluesyncSSLError('No valid certificates found in the keystore');
+      throw new Error('No valid certificates found in the keystore');
     }
-    
-    // Return TLS options with the certificates
+
+    const selectedCerts = alias ? certs.filter(cert => cert.includes(alias)) : certs;
+
     return {
-      ca: certs,
-      checkServerIdentity: () => undefined, // Skip hostname verification
-      rejectUnauthorized: true
+      ca: selectedCerts,
+      checkServerIdentity: () => undefined,
+      rejectUnauthorized: true,
+      passphrase: keyPassword || keystorePassword
     };
   } catch (error) {
-    if (error instanceof GluesyncSSLError) {
-      throw error;
-    }
-    throw new GluesyncSSLError(`Failed to create SSL context: ${error}`);
+    logger.error(`Failed to create SSL context: ${error}`);
+    throw new Error(`Failed to create SSL context: ${error}`);
   }
 }
 
