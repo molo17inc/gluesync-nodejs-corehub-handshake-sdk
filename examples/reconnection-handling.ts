@@ -1,9 +1,15 @@
 /**
- * Advanced example demonstrating reconnection handling with the Gluesync SDK.
+ * Advanced example demonstrating automatic reconnection handling with the Gluesync SDK.
+ * 
+ * This example demonstrates the automatic reconnection handling functionality
+ * built into the Gluesync client.
+ *
+ * The client automatically handles reconnection when disconnected from CoreHub,
+ * with exponential backoff and configurable retry settings.
  * 
  * This example shows:
  * 1. Setting up a GluesyncClient with event handlers
- * 2. Implementing automatic reconnection with exponential backoff
+ * 2. Automatic reconnection with exponential backoff
  * 3. Handling various connection events
  * 4. Graceful shutdown
  * 
@@ -21,24 +27,18 @@ process.env.DEBUG = DEBUG;
 
 // Configuration
 const config = {
-  host: process.env.CORE_HUB_ADDRESS || null,
+  host: 'localhost',  // Use null for auto-discovery
   port: 1717,
-  licenseFilePath: './gs-license.dat',
-  moduleTag: 'nodejs-reconnect-example',
-  ssl: false,
-  // Reconnection settings
-  initialReconnectDelay: 1000,  // 1 second
-  maxReconnectDelay: 30000,     // 30 seconds
-  reconnectBackoffMultiplier: 1.5,
-  maxReconnectAttempts: 10
+  licenseFilePath: '../gs-license.dat',
+  moduleTag: 'nodejs-example',
+  ssl: false
+  // Note: Reconnection settings are now handled internally by the SDK
 };
 
 class GluesyncClientManager {
   private client: GluesyncClient;
-  private reconnectAttempts: number = 0;
-  private reconnectTimer: NodeJS.Timeout | null = null;
-  private reconnectDelay: number = config.initialReconnectDelay;
   private isShuttingDown: boolean = false;
+  private currentToken: string | null = null;
   
   constructor() {
     // Create the client
@@ -55,6 +55,9 @@ class GluesyncClientManager {
     
     // Set up process signal handlers for graceful shutdown
     this.setupSignalHandlers();
+    
+    // Track the current token
+    this.currentToken = null;
   }
   
   /**
@@ -65,25 +68,49 @@ class GluesyncClientManager {
     this.client.onConnected = (token) => {
       console.log(`Connected to CoreHub successfully!`);
       console.log(`Received token: ${token.substring(0, 20)}...`);
-      
-      // Reset reconnection state on successful connection
-      this.reconnectAttempts = 0;
-      this.reconnectDelay = config.initialReconnectDelay;
     };
     
     // Disconnected event
     this.client.onDisconnected = (reason) => {
       console.log(`Disconnected from CoreHub: ${reason}`);
-      
-      // Attempt to reconnect if not shutting down
-      if (!this.isShuttingDown) {
-        this.scheduleReconnect();
-      }
+      console.log('SDK will automatically attempt to reconnect...');
+      // Note: Reconnection is now handled automatically by the SDK
     };
     
     // Error event
     this.client.onError = (error) => {
       console.error(`Error occurred: ${error.message}`);
+    };
+    
+    // Token update event
+    this.client.onTokenUpdated = (token) => {
+      if (this.currentToken !== token) {
+        const oldToken = this.currentToken;
+        this.currentToken = token;
+        
+        if (oldToken) {
+          console.log('Token has been updated after reconnection.');
+          console.log(`Previous token: ${oldToken.substring(0, 10)}... New token: ${token.substring(0, 10)}...`);
+        } else {
+          console.log(`Received initial token: ${token.substring(0, 10)}...`);
+        }
+        
+        // This is where you would update any services that depend on the token
+        this.updateDependentServices(token);
+      }
+    };
+    
+    // New SDK reconnection events
+    
+    // Reconnecting event - called when the SDK starts attempting to reconnect
+    this.client.onReconnecting = () => {
+      console.log('Reconnecting to CoreHub...');
+    };
+    
+    // Reconnected event - called when the SDK successfully reconnects
+    this.client.onReconnected = (token) => {
+      console.log('Successfully reconnected to CoreHub!');
+      console.log(`Reconnection token: ${token.substring(0, 20)}...`);
     };
   }
   
@@ -124,50 +151,21 @@ class GluesyncClientManager {
       console.log(`Connection status: ${this.client.connectionStatus}`);
     } catch (error) {
       console.error(`Failed to connect: ${error}`);
-      
-      // Schedule reconnection
-      if (!this.isShuttingDown) {
-        this.scheduleReconnect();
-      }
+      // Note: The SDK will automatically attempt to reconnect
     }
   }
   
   /**
-   * Schedule a reconnection attempt with exponential backoff
+   * Update any dependent services that use the token
+   * 
+   * @param token - The new authentication token
    */
-  private scheduleReconnect(): void {
-    // Clear any existing reconnect timer
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-    
-    // Check if we've exceeded the maximum number of attempts
-    if (this.reconnectAttempts >= config.maxReconnectAttempts) {
-      console.error(`Maximum reconnection attempts (${config.maxReconnectAttempts}) reached. Giving up.`);
-      return;
-    }
-    
-    // Increment the reconnect attempts counter
-    this.reconnectAttempts++;
-    
-    // Calculate the next reconnect delay with exponential backoff
-    const delay = Math.min(
-      this.reconnectDelay * Math.pow(config.reconnectBackoffMultiplier, this.reconnectAttempts - 1),
-      config.maxReconnectDelay
-    );
-    
-    console.log(`Scheduling reconnection attempt ${this.reconnectAttempts} in ${delay / 1000} seconds...`);
-    
-    // Schedule the reconnection
-    this.reconnectTimer = setTimeout(async () => {
-      try {
-        console.log(`Attempting to reconnect (attempt ${this.reconnectAttempts} of ${config.maxReconnectAttempts})...`);
-        await this.connect();
-      } catch (error) {
-        console.error(`Reconnection attempt failed: ${error}`);
-      }
-    }, delay);
+  private updateDependentServices(token: string): void {
+    // Example: Update token in other services that need it
+    console.log('Updating token in dependent services...');
+    // Example only - in reality, you would update your actual services:
+    // myChronosApp.updateToken(token);
+    // myApiClient.setAuthToken(token);
   }
   
   /**
@@ -175,12 +173,6 @@ class GluesyncClientManager {
    */
   public async shutdown(): Promise<void> {
     this.isShuttingDown = true;
-    
-    // Clear any reconnect timer
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
     
     // Disconnect if connected
     if (this.client.isConnected) {

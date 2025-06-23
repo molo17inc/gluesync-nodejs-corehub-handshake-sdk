@@ -62,6 +62,7 @@ export class WebSocketConnection extends EventEmitter {
   public onConnected: CallbackFunction<string> | null = null;
   public onDisconnected: CallbackFunction<string> | null = null;
   public onError: CallbackFunction<Error> | null = null;
+  public onTokenUpdated: CallbackFunction<string> | null = null;
   
   /**
    * Initialize the WebSocket connection.
@@ -188,10 +189,16 @@ export class WebSocketConnection extends EventEmitter {
         throw new GluesyncHandshakeError('Unexpected "pong" message during handshake');
       }
       
-      // Store the token
+      // Store the token and notify about the change
+      const oldToken = this._token;
       this._token = response;
       this.connected = true;
       log('Authentication successful, received token');
+      
+      // Notify about token update if it has changed
+      if (oldToken !== this._token && this.onTokenUpdated) {
+        await this.callCallback(this.onTokenUpdated, this._token);
+      }
       
       // Set up message handlers and ping loop
       this.setupMessageHandlers();

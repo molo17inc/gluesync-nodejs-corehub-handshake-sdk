@@ -61,6 +61,15 @@ export class GluesyncClient extends EventEmitter {
   private connection: WebSocketConnection | null = null;
   private _token: string | null = null;
   
+  // Reconnection state
+  private _reconnecting: boolean = false;
+  private _reconnectTimer: NodeJS.Timeout | null = null;
+  private _initialReconnectDelay: number = 1000;  // 1 second
+  private _maxReconnectDelay: number = 30000;     // 30 seconds
+  private _reconnectBackoffMultiplier: number = 1.5;
+  private _reconnectAttempts: number = 0;
+  private _maxReconnectAttempts: number = 10;
+  
   /**
    * Initialize the Gluesync client.
    *
@@ -199,6 +208,25 @@ export class GluesyncClient extends EventEmitter {
   public onError: CallbackFunction<Error> | null = null;
   
   /**
+   * Event handler for token update events.
+   * Set this to receive notifications when the authentication token changes,
+   * which happens both on initial connection and after reconnection.
+   */
+  public onTokenUpdated: CallbackFunction<string> | null = null;
+  
+  /**
+   * Event handler for reconnecting events.
+   * Set this to receive notifications when the client is attempting to reconnect.
+   */
+  public onReconnecting: CallbackFunction<void> | null = null;
+  
+  /**
+   * Event handler for reconnected events.
+   * Set this to receive notifications when the client has successfully reconnected.
+   */
+  public onReconnected: CallbackFunction<string> | null = null;
+  
+  /**
    * Generate the HTTP headers for the WebSocket connection.
    *
    * @returns Dictionary of HTTP headers
@@ -283,6 +311,7 @@ export class GluesyncClient extends EventEmitter {
       this.connection.onConnected = this._onConnected;
       this.connection.onDisconnected = this._onDisconnected;
       this.connection.onError = this._onError;
+      this.connection.onTokenUpdated = this._notifyTokenUpdated.bind(this);
       
       // Connect to the server
       const token = await this.connection.connect();
@@ -374,6 +403,9 @@ export class GluesyncClient extends EventEmitter {
         log('Error in onConnected callback: %s', error);
       }
     }
+    
+    // Notify about token update on initial connection
+    await this._notifyTokenUpdated(token);
   }
   
   /**
@@ -398,15 +430,20 @@ export class GluesyncClient extends EventEmitter {
         log('Error in onDisconnected callback: %s', error);
       }
     }
+    
+    // Start the reconnection process if not already reconnecting
+    if (!this._reconnecting) {
+      this._startReconnect();
+    }
   }
   
   /**
    * Handle the error event.
    *
-   * @param error - The exception that occurred
+   * @param error - The error that occurred
    */
   private async _onError(error: Error): Promise<void> {
-    log('Error in connection: %s', error.message);
+    log('Error in connection: %s', error);
     
     // Emit event
     this.emit('error', error);
@@ -421,6 +458,194 @@ export class GluesyncClient extends EventEmitter {
       } catch (callbackError) {
         log('Error in onError callback: %s', callbackError);
       }
+    }
+  }
+  
+  /**
+   * Notify listeners about a token update.
+   * 
+   * @param token - The new token value
+   */
+  private async _notifyTokenUpdated(token: string): Promise<void> {
+    // Only notify if the token actually changed
+    if (this._token !== token) {
+      log('Token updated');
+      
+      // Emit event
+      this.emit('tokenUpdated', token);
+      
+      // Call callback if defined
+      if (this.onTokenUpdated) {
+        try {
+          const result = this.onTokenUpdated(token);
+          if (result instanceof Promise) {
+            await result;
+          }
+        } catch (error) {
+          log('Error in onTokenUpdated callback: %s', error);
+        }
+      }
+    }
+  }
+  
+  /**
+   * Start the reconnection process.
+   */
+  private _startReconnect(): void {
+    // Don't start a new reconnection if already reconnecting
+    if (this._reconnecting) {
+      return;
+    }
+    
+    // Reset any previous reconnect timer
+    if (this._reconnectTimer) {
+      clearTimeout(this._reconnectTimer);
+      this._reconnectTimer = null;
+    }
+    
+    this._reconnecting = true;
+    this._reconnectAttempts = 0;
+    
+    log('Starting reconnection process...');
+    
+    // Emit event that we're attempting to reconnect
+    this.emit('reconnecting');
+    
+    // Call the reconnecting callback if defined
+    if (this.onReconnecting) {
+      try {
+        const result = this.onReconnecting();
+        if (result instanceof Promise) {
+          result.catch(error => {
+            log('Error in onReconnecting callback: %s', error);
+          });
+        }
+      } catch (error) {
+        log('Error in onReconnecting callback: %s', error);
+      }
+    }
+    
+    // Schedule the first reconnection attempt
+    this._scheduleReconnect();
+  }
+  
+  /**
+   * Schedule a reconnection attempt with exponential backoff.
+   */
+  private _scheduleReconnect(): void {
+    // Check if we've exceeded the maximum number of attempts
+    if (this._reconnectAttempts >= this._maxReconnectAttempts) {
+      log('Maximum reconnection attempts (%d) reached. Giving up.', this._maxReconnectAttempts);
+      this._reconnecting = false;
+      return;
+    }
+    
+    // Increment the reconnect attempts counter
+    this._reconnectAttempts++;
+    
+    // Calculate the delay with exponential backoff
+    const delay = Math.min(
+      this._initialReconnectDelay * Math.pow(this._reconnectBackoffMultiplier, this._reconnectAttempts - 1),
+      this._maxReconnectDelay
+    );
+    
+    log('Scheduling reconnection attempt %d in %d ms...', this._reconnectAttempts, delay);
+    
+    // Schedule the reconnection
+    this._reconnectTimer = setTimeout(() => {
+      this._attemptReconnect().catch(error => {
+        log('Reconnection attempt failed: %s', error);
+        
+        // If we failed to reconnect, schedule the next attempt
+        if (this._reconnecting) {
+          this._scheduleReconnect();
+        }
+      });
+    }, delay);
+  }
+  
+  /**
+   * Attempt to reconnect to the CoreHub.
+   * @returns The authentication token if reconnection is successful
+   */
+  private async _attemptReconnect(): Promise<string> {
+    log('Attempting to reconnect (attempt %d of %d)...', this._reconnectAttempts, this._maxReconnectAttempts);
+    
+    try {
+      // If no host is specified, try to discover one
+      if (this.host === null) {
+        try {
+          log('No host provided, using UDP autodiscovery to find CoreHub...');
+          const discoveredHost = await getCorehubAddress(
+            'CORE_HUB_ADDRESS',
+            this.discoveryStartPort,
+            this.discoveryPortRange,
+            this.timeout,
+            this.verifySsl
+          );
+          
+          // Save the discovered host
+          this.host = discoveredHost;
+          log('CoreHub discovered at %s', discoveredHost);
+        } catch (error) {
+          log('Failed to discover CoreHub: %s', error);
+          throw new GluesyncConnectionError(`Failed to discover CoreHub: ${error}`);
+        }
+      }
+      
+      // Create a new connection
+      this.connection = new WebSocketConnection(
+        this.host,
+        this.port,
+        this.getConnectionHeaders(),
+        this.sslOptions,
+        this.pingInterval,
+        this.timeout,
+        this.verifySsl
+      );
+      
+      // Set up event handlers
+      this.connection.onConnected = this._onConnected;
+      this.connection.onDisconnected = this._onDisconnected;
+      this.connection.onError = this._onError;
+      this.connection.onTokenUpdated = this._notifyTokenUpdated.bind(this);
+      
+      // Connect to the server
+      const token = await this.connection.connect();
+      this._token = token;
+      this._connected = true;
+      
+      // Successfully reconnected
+      log('Successfully reconnected to CoreHub at %s:%d', this.host, this.port);
+      this._reconnecting = false;
+      
+      // Reset reconnect attempts
+      this._reconnectAttempts = 0;
+      
+      // Emit reconnected event
+      this.emit('reconnected', token);
+      
+      // Call the reconnected callback if defined
+      if (this.onReconnected) {
+        try {
+          const result = this.onReconnected(token);
+          if (result instanceof Promise) {
+            await result;
+          }
+        } catch (error) {
+          log('Error in onReconnected callback: %s', error);
+        }
+      }
+      
+      // Also notify token update listeners when reconnected (this is important to update
+      // any services that depend on the token)
+      await this._notifyTokenUpdated(token);
+      
+      return token;
+    } catch (error) {
+      // Log the error and rethrow
+      log('Failed to reconnect: %s', error);
+      throw error;
     }
   }
 }
