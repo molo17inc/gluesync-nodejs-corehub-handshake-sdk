@@ -80,7 +80,7 @@ export class WebSocketConnection extends EventEmitter {
     port: number,
     headers: Record<string, string>,
     sslOptions: tls.ConnectionOptions | null = null,
-    pingInterval: number = 1000,
+    pingInterval: number = 1,
     timeout: number = 10000,
     verifySsl: boolean = true,
   ) {

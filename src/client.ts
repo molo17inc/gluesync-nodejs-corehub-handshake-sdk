@@ -95,7 +95,7 @@ export class GluesyncClient extends EventEmitter {
     verifySsl = true,
     keystorePath = null,
     keystorePassword = null,
-    pingInterval = 1000,
+    pingInterval = 5,
     timeout = 10000,
     discoveryStartPort = 1717,
     discoveryPortRange = 10,
