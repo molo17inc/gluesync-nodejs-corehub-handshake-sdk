@@ -1,7 +1,7 @@
 /**
- * This file is part of Gluesync Scheduler Module.
+ * This file is part of Gluesync SDK.
  *
- * Gluesync Scheduler Module is dual-licensed under the following licenses:
+ * Gluesync SDK is dual-licensed under the following licenses:
  *
  * 1. GNU General Public License (GPL) Version 3
  *    You may use, modify, and distribute this software under the terms of the GPL v3.
