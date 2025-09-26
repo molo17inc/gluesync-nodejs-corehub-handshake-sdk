@@ -86,7 +86,7 @@ export class CoreHubDiscovery {
    * @throws Error if unable to bind to a socket or other network issues
    * @throws Error if no broadcast is received within the timeout period
    */
-  async discoverCoreHub(verifySsl: boolean = this.verifySsl): Promise<string> {
+  async discoverCoreHub(): Promise<string> {
     if (this.discoveryPromise) {
       log('Discovery already in progress, returning existing promise');
       return this.discoveryPromise;
@@ -252,7 +252,7 @@ export async function getCorehubAddress(
       timeoutMs,
       verifySsl,
     );
-    return await discovery.discoverCoreHub(verifySsl);
+    return await discovery.discoverCoreHub();
   } catch (error) {
     log('Failed to discover CoreHub: %s', error);
     throw new Error(
