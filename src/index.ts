@@ -1,11 +1,11 @@
 /**
  * Gluesync Node.js SDK for CoreHub connection.
  *
- * This SDK provides a client-side interface for interacting with the Gluesync CoreHub 
- * through a WebSocket connection. It implements the complete client-server handshake process 
+ * This SDK provides a client-side interface for interacting with the Gluesync CoreHub
+ * through a WebSocket connection. It implements the complete client-server handshake process
  * and supports both WS and WSS connections using JKS certificates.
  *
- * Gluesync Scheduler Module is dual-licensed under the following licenses:
+ * Gluesync SDK is dual-licensed under the following licenses:
  *
  * 1. GNU General Public License (GPL) Version 3
  *    You may use, modify, and distribute this software under the terms of the GPL v3.
@@ -43,7 +43,7 @@ export {
   GluesyncSSLError,
   GluesyncTimeoutError,
   GluesyncHandshakeError,
-  GluesyncClosedError
+  GluesyncClosedError,
 } from './exceptions';
 
 // Define package version

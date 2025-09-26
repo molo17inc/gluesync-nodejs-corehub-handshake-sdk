@@ -1,7 +1,7 @@
 /**
- * This file is part of Gluesync Scheduler Module.
+ * This file is part of Gluesync SDK.
  *
- * Gluesync Scheduler Module is dual-licensed under the following licenses:
+ * Gluesync SDK is dual-licensed under the following licenses:
  *
  * 1. GNU General Public License (GPL) Version 3
  *    You may use, modify, and distribute this software under the terms of the GPL v3.
@@ -33,7 +33,7 @@ import {
   GluesyncConnectionError,
   // GluesyncAuthenticationError,
   GluesyncLicenseError,
-  GluesyncSSLError
+  GluesyncSSLError,
 } from './exceptions';
 
 // Set up debug logger
@@ -53,23 +53,23 @@ export class GluesyncClient extends EventEmitter {
   private timeout: number;
   private discoveryStartPort: number;
   private discoveryPortRange: number;
-  
+
   private licenseFilePath: string;
   private licenseContent: string | null = null;
-  
+
   private sslOptions: tls.ConnectionOptions | null = null;
   private connection: WebSocketConnection | null = null;
   private _token: string | null = null;
-  
+
   // Reconnection state
   private _reconnecting: boolean = false;
   private _reconnectTimer: NodeJS.Timeout | null = null;
-  private _initialReconnectDelay: number = 1000;  // 1 second
-  private _maxReconnectDelay: number = 30000;     // 30 seconds
+  private _initialReconnectDelay: number = 1000; // 1 second
+  private _maxReconnectDelay: number = 30000; // 30 seconds
   private _reconnectBackoffMultiplier: number = 1.5;
   private _reconnectAttempts: number = 0;
   private _maxReconnectAttempts: number = 10;
-  
+
   /**
    * Initialize the Gluesync client.
    *
@@ -95,10 +95,10 @@ export class GluesyncClient extends EventEmitter {
     verifySsl = true,
     keystorePath = null,
     keystorePassword = null,
-    pingInterval = 1000,
+    pingInterval = 5,
     timeout = 10000,
     discoveryStartPort = 1717,
-    discoveryPortRange = 10
+    discoveryPortRange = 10,
   }: {
     host?: string | null;
     port?: number;
@@ -114,7 +114,7 @@ export class GluesyncClient extends EventEmitter {
     discoveryPortRange?: number;
   } = {}) {
     super();
-    
+
     this.host = host;
     this.port = port;
     this.moduleTag = moduleTag;
@@ -125,27 +125,29 @@ export class GluesyncClient extends EventEmitter {
     this.discoveryStartPort = discoveryStartPort;
     this.discoveryPortRange = discoveryPortRange;
     this.licenseFilePath = licenseFilePath;
-    
+
     // Event handlers
     this._onConnected = this._onConnected.bind(this);
     this._onDisconnected = this._onDisconnected.bind(this);
     this._onError = this._onError.bind(this);
-    
+
     // SSL context setup
     if (this.useSSL) {
       if (!keystorePath || !keystorePassword) {
-        throw new GluesyncSSLError('Keystore path and password are required for SSL connections');
+        throw new GluesyncSSLError(
+          'Keystore path and password are required for SSL connections',
+        );
       }
-      
+
       // We'll initialize the SSL context when connecting to avoid
       // blocking the constructor with async operations
-      
+
       log('SSL will be used for connection');
     }
-    
+
     log('GluesyncClient initialized for %s:%d', host || 'autodiscovery', port);
   }
-  
+
   /**
    * Get the JWT token received from CoreHub after authentication.
    *
@@ -157,7 +159,7 @@ export class GluesyncClient extends EventEmitter {
     }
     return this._token;
   }
-  
+
   /**
    * Get the current connection status.
    *
@@ -167,65 +169,69 @@ export class GluesyncClient extends EventEmitter {
     if (!this.connection) {
       return 'Not initialized';
     }
-    
+
     if (this.connection.isConnected) {
       return 'Connected';
     }
-    
+
     return 'Disconnected';
   }
-  
+
   /**
    * Check if the client is currently connected to CoreHub.
    *
    * @returns True if connected, False otherwise
    */
   public get isConnected(): boolean {
-    return this._connected && this.connection !== null && this.connection.isConnected === true;
+    return (
+      this._connected &&
+      this.connection !== null &&
+      this.connection.isConnected === true
+    );
   }
 
   /**
    * Set the connected state
    */
   private _connected: boolean = false;
-  
+
   /**
    * Event handler for connected events.
    * Set this to receive notifications when the client connects.
    */
   public onConnected: CallbackFunction<string> | null = null;
-  
+
   /**
    * Event handler for disconnected events.
    * Set this to receive notifications when the client disconnects.
    */
   public onDisconnected: CallbackFunction<string> | null = null;
-  
+
   /**
    * Event handler for error events.
    * Set this to receive notifications when an error occurs.
    */
   public onError: CallbackFunction<Error> | null = null;
-  
+
   /**
    * Event handler for token update events.
    * Set this to receive notifications when the authentication token changes,
    * which happens both on initial connection and after reconnection.
    */
   public onTokenUpdated: CallbackFunction<string> | null = null;
-  
+
   /**
    * Event handler for reconnecting events.
    * Set this to receive notifications when the client is attempting to reconnect.
    */
   public onReconnecting: CallbackFunction<void> | null = null;
-  
+
   /**
    * Event handler for reconnected events.
    * Set this to receive notifications when the client has successfully reconnected.
    */
   public onReconnected: CallbackFunction<string> | null = null;
-  
+
   /**
    * Generate the HTTP headers for the WebSocket connection.
    *
@@ -235,10 +241,10 @@ export class GluesyncClient extends EventEmitter {
   public getConnectionHeaders(): Record<string, string> {
     return {
       'Module-License': this.getLicenseContent(),
-      'Module-Tag': this.moduleTag
+      'Module-Tag': this.moduleTag,
     };
   }
-  
+
   /**
    * Connect to the CoreHub and perform the handshake authentication.
    *
@@ -254,10 +260,10 @@ export class GluesyncClient extends EventEmitter {
       log('Already connected to CoreHub');
       return this.token!;
     }
-    
+
     // Reset connection state
     this._connected = false;
-    
+
     try {
       // Use autodiscovery if host is not provided
       let host = this.host;
@@ -269,33 +275,38 @@ export class GluesyncClient extends EventEmitter {
             this.discoveryStartPort,
             this.discoveryPortRange,
             this.timeout,
-            this.verifySsl
+            this.verifySsl,
           );
-          
+
           // Save the discovered host
           this.host = host;
           log('CoreHub discovered at %s', host);
         } catch (error) {
           log('Failed to discover CoreHub: %s', error);
-          throw new GluesyncConnectionError(`Failed to discover CoreHub: ${error}`);
+          throw new GluesyncConnectionError(
+            `Failed to discover CoreHub: ${error}`,
+          );
         }
       }
-      
+
       // Set up SSL options if needed
       if (this.useSSL && !this.sslOptions) {
         try {
           // Get keystore path and password from constructor parameters or environment variables
           const keystorePath = process.env.KEYSTORE_PATH || '';
           const keystorePassword = process.env.KEYSTORE_PASSWORD || '';
-          
-          this.sslOptions = await createSslContextFromJks(keystorePath, keystorePassword);
+
+          this.sslOptions = await createSslContextFromJks(
+            keystorePath,
+            keystorePassword,
+          );
           log('SSL context created successfully');
         } catch (error) {
           log('Failed to create SSL context: %s', error);
           throw new GluesyncSSLError(`Failed to create SSL context: ${error}`);
         }
       }
-      
+
       // Create the connection
       this.connection = new WebSocketConnection(
         host,
@@ -304,34 +315,34 @@ export class GluesyncClient extends EventEmitter {
         this.sslOptions,
         this.pingInterval,
         this.timeout,
-        this.verifySsl
+        this.verifySsl,
       );
-      
+
       // Set up event handlers
       this.connection.onConnected = this._onConnected;
       this.connection.onDisconnected = this._onDisconnected;
       this.connection.onError = this._onError;
       this.connection.onTokenUpdated = this._notifyTokenUpdated.bind(this);
-      
+
       // Connect to the server
       const token = await this.connection.connect();
       this._token = token;
       this._connected = true;
-      
+
       log('Connected to CoreHub at %s:%d', host, this.port);
       return token;
     } catch (error) {
       log('Connection failed: %s', error);
-      
+
       // Forward the appropriate error type
       if (error instanceof GluesyncError) {
         throw error;
       }
-      
+
       throw new GluesyncConnectionError(`Failed to connect: ${error}`);
     }
   }
-  
+
   /**
    * Disconnect from the CoreHub.
    *
@@ -342,10 +353,10 @@ export class GluesyncClient extends EventEmitter {
       log('Not connected to CoreHub');
       return;
     }
-    
+
     // Reset connection state
     this._connected = false;
-    
+
     try {
       await this.connection!.disconnect();
       log('Disconnected from CoreHub');
@@ -354,7 +365,7 @@ export class GluesyncClient extends EventEmitter {
       throw new GluesyncConnectionError(`Error during disconnection: ${error}`);
     }
   }
-  
+
   /**
    * Load and get the license content from the file.
    *
@@ -365,10 +376,14 @@ export class GluesyncClient extends EventEmitter {
     if (this.licenseContent === null) {
       try {
         if (!fs.existsSync(this.licenseFilePath)) {
-          throw new GluesyncLicenseError(`License file not found: ${this.licenseFilePath}`);
+          throw new GluesyncLicenseError(
+            `License file not found: ${this.licenseFilePath}`,
+          );
         }
-        
-        this.licenseContent = fs.readFileSync(this.licenseFilePath, 'utf8').trim();
+
+        this.licenseContent = fs
+          .readFileSync(this.licenseFilePath, 'utf8')
+          .trim();
       } catch (error) {
         if (error instanceof GluesyncLicenseError) {
           throw error;
@@ -376,10 +391,10 @@ export class GluesyncClient extends EventEmitter {
         throw new GluesyncLicenseError(`Failed to read license file: ${error}`);
       }
     }
-    
+
     return this.licenseContent;
   }
-  
+
   /**
    * Handle the connected event.
    *
@@ -388,10 +403,10 @@ export class GluesyncClient extends EventEmitter {
   private async _onConnected(token: string): Promise<void> {
     log('Connected to CoreHub successfully');
     this._token = token;
-    
+
     // Emit event
     this.emit('connected', token);
-    
+
     // Call callback if defined
     if (this.onConnected) {
       try {
@@ -403,11 +418,11 @@ export class GluesyncClient extends EventEmitter {
         log('Error in onConnected callback: %s', error);
       }
     }
-    
+
     // Notify about token update on initial connection
     await this._notifyTokenUpdated(token);
   }
-  
+
   /**
    * Handle the disconnected event.
    *
@@ -415,10 +430,10 @@ export class GluesyncClient extends EventEmitter {
    */
   private async _onDisconnected(reason: string): Promise<void> {
     log('Disconnected from CoreHub: %s', reason);
-    
+
     // Emit event
     this.emit('disconnected', reason);
-    
+
     // Call callback if defined
     if (this.onDisconnected) {
       try {
@@ -430,13 +445,13 @@ export class GluesyncClient extends EventEmitter {
         log('Error in onDisconnected callback: %s', error);
       }
     }
-    
+
     // Start the reconnection process if not already reconnecting
     if (!this._reconnecting) {
       this._startReconnect();
     }
   }
-  
+
   /**
    * Handle the error event.
    *
@@ -444,10 +459,10 @@ export class GluesyncClient extends EventEmitter {
    */
   private async _onError(error: Error): Promise<void> {
     log('Error in connection: %s', error);
-    
+
     // Emit event
     this.emit('error', error);
-    
+
     // Call callback if defined
     if (this.onError) {
       try {
@@ -460,20 +475,20 @@ export class GluesyncClient extends EventEmitter {
       }
     }
   }
-  
+
   /**
    * Notify listeners about a token update.
-   * 
+   *
    * @param token - The new token value
    */
   private async _notifyTokenUpdated(token: string): Promise<void> {
     // Only notify if the token actually changed
     if (this._token !== token) {
       log('Token updated');
-      
+
       // Emit event
       this.emit('tokenUpdated', token);
-      
+
       // Call callback if defined
       if (this.onTokenUpdated) {
         try {
@@ -487,7 +502,7 @@ export class GluesyncClient extends EventEmitter {
       }
     }
   }
-  
+
   /**
    * Start the reconnection process.
    */
@@ -496,21 +511,21 @@ export class GluesyncClient extends EventEmitter {
     if (this._reconnecting) {
       return;
     }
-    
+
     // Reset any previous reconnect timer
     if (this._reconnectTimer) {
       clearTimeout(this._reconnectTimer);
       this._reconnectTimer = null;
     }
-    
+
     this._reconnecting = true;
     this._reconnectAttempts = 0;
-    
+
     log('Starting reconnection process...');
-    
+
     // Emit event that we're attempting to reconnect
     this.emit('reconnecting');
-    
+
     // Call the reconnecting callback if defined
     if (this.onReconnecting) {
       try {
@@ -524,38 +539,46 @@ export class GluesyncClient extends EventEmitter {
         log('Error in onReconnecting callback: %s', error);
       }
     }
-    
+
     // Schedule the first reconnection attempt
     this._scheduleReconnect();
   }
-  
+
   /**
    * Schedule a reconnection attempt with exponential backoff.
    */
   private _scheduleReconnect(): void {
     // Check if we've exceeded the maximum number of attempts
     if (this._reconnectAttempts >= this._maxReconnectAttempts) {
-      log('Maximum reconnection attempts (%d) reached. Giving up.', this._maxReconnectAttempts);
+      log(
+        'Maximum reconnection attempts (%d) reached. Giving up.',
+        this._maxReconnectAttempts,
+      );
       this._reconnecting = false;
       return;
     }
-    
+
     // Increment the reconnect attempts counter
     this._reconnectAttempts++;
-    
+
     // Calculate the delay with exponential backoff
     const delay = Math.min(
-      this._initialReconnectDelay * Math.pow(this._reconnectBackoffMultiplier, this._reconnectAttempts - 1),
-      this._maxReconnectDelay
+      this._initialReconnectDelay *
+        Math.pow(this._reconnectBackoffMultiplier, this._reconnectAttempts - 1),
+      this._maxReconnectDelay,
     );
-    
-    log('Scheduling reconnection attempt %d in %d ms...', this._reconnectAttempts, delay);
-    
+
+    log(
+      'Scheduling reconnection attempt %d in %d ms...',
+      this._reconnectAttempts,
+      delay,
+    );
+
     // Schedule the reconnection
     this._reconnectTimer = setTimeout(() => {
       this._attemptReconnect().catch(error => {
         log('Reconnection attempt failed: %s', error);
-        
+
         // If we failed to reconnect, schedule the next attempt
         if (this._reconnecting) {
           this._scheduleReconnect();
@@ -563,23 +586,30 @@ export class GluesyncClient extends EventEmitter {
       });
     }, delay);
   }
-  
+
   /**
    * Attempt to reconnect to the CoreHub.
    * First tries to reconnect to the specified/known host.
    * If that fails, attempts to re-discover the CoreHub in case its IP address has changed.
-   * 
+   *
    * @returns The authentication token if reconnection is successful
    */
   private async _attemptReconnect(): Promise<string> {
-    log('Attempting to reconnect (attempt %d of %d)...', this._reconnectAttempts, this._maxReconnectAttempts);
-    
+    log(
+      'Attempting to reconnect (attempt %d of %d)...',
+      this._reconnectAttempts,
+      this._maxReconnectAttempts,
+    );
+
     try {
       // If a specific host is known, try direct reconnection first
       if (this.host !== null) {
         try {
-          log('CoreHub address known (%s), attempting direct reconnection...', this.host);
-          
+          log(
+            'CoreHub address known (%s), attempting direct reconnection...',
+            this.host,
+          );
+
           // Create a new connection to the known host
           this.connection = new WebSocketConnection(
             this.host,
@@ -588,30 +618,34 @@ export class GluesyncClient extends EventEmitter {
             this.sslOptions,
             this.pingInterval,
             this.timeout,
-            this.verifySsl
+            this.verifySsl,
           );
-          
+
           // Set up event handlers
           this.connection.onConnected = this._onConnected;
           this.connection.onDisconnected = this._onDisconnected;
           this.connection.onError = this._onError;
           this.connection.onTokenUpdated = this._notifyTokenUpdated.bind(this);
-          
+
           // Try to connect to the server with the known host
           const token = await this.connection.connect();
           this._token = token;
           this._connected = true;
-          
+
           // Successfully reconnected
-          log('Successfully reconnected to CoreHub at %s:%d', this.host, this.port);
+          log(
+            'Successfully reconnected to CoreHub at %s:%d',
+            this.host,
+            this.port,
+          );
           this._reconnecting = false;
-          
+
           // Reset reconnect attempts
           this._reconnectAttempts = 0;
-          
+
           // Emit reconnected event
           this.emit('reconnected', token);
-          
+
           // Call the reconnected callback if defined
           if (this.onReconnected) {
             try {
@@ -623,45 +657,51 @@ export class GluesyncClient extends EventEmitter {
               log('Error in onReconnected callback: %s', error);
             }
           }
-          
+
           // Also notify token update listeners when reconnected
           await this._notifyTokenUpdated(token);
-          
+
           return token;
         } catch (reconnectError) {
-          log('Direct reconnection to %s failed: %s', this.host, reconnectError);
-          log('CoreHub may have changed IP address, attempting re-discovery...');
+          log(
+            'Direct reconnection to %s failed: %s',
+            this.host,
+            reconnectError,
+          );
+          log(
+            'CoreHub may have changed IP address, attempting re-discovery...',
+          );
         }
       }
-      
+
       // Either no host was provided initially or direct reconnection failed,
       // so attempt discovery
-      
+
       // Store previous host before clearing it for re-discovery
       const previousHost = this.host;
-      
+
       try {
         // Clear the previous host so we truly re-discover
         this.host = null;
-        
+
         log('Using UDP autodiscovery to find CoreHub...');
         const discoveredHost = await getCorehubAddress(
           'CORE_HUB_ADDRESS',
           this.discoveryStartPort,
           this.discoveryPortRange,
           this.timeout,
-          this.verifySsl
+          this.verifySsl,
         );
-        
+
         // If discovered a new host different from previous one, log it
         if (previousHost && previousHost !== discoveredHost) {
           log('CoreHub IP changed from %s to %s', previousHost, discoveredHost);
         }
-        
+
         // Save the discovered host
         this.host = discoveredHost;
         log('CoreHub discovered at %s', discoveredHost);
-        
+
         // Create a new connection to the discovered host
         this.connection = new WebSocketConnection(
           this.host,
@@ -670,30 +710,34 @@ export class GluesyncClient extends EventEmitter {
           this.sslOptions,
           this.pingInterval,
           this.timeout,
-          this.verifySsl
+          this.verifySsl,
         );
-        
+
         // Set up event handlers
         this.connection.onConnected = this._onConnected;
         this.connection.onDisconnected = this._onDisconnected;
         this.connection.onError = this._onError;
         this.connection.onTokenUpdated = this._notifyTokenUpdated.bind(this);
-        
+
         // Connect to the server
         const newToken = await this.connection.connect();
         this._token = newToken;
         this._connected = true;
-        
+
         // Successfully reconnected
-        log('Successfully reconnected to CoreHub at %s:%d', this.host, this.port);
+        log(
+          'Successfully reconnected to CoreHub at %s:%d',
+          this.host,
+          this.port,
+        );
         this._reconnecting = false;
-        
+
         // Reset reconnect attempts
         this._reconnectAttempts = 0;
-        
+
         // Emit reconnected event
         this.emit('reconnected', newToken);
-        
+
         // Call the reconnected callback if defined
         if (this.onReconnected) {
           try {
@@ -705,10 +749,10 @@ export class GluesyncClient extends EventEmitter {
             log('Error in onReconnected callback: %s', error);
           }
         }
-        
+
         // Also notify token update listeners when reconnected
         await this._notifyTokenUpdated(newToken);
-        
+
         return newToken;
       } catch (discoveryError) {
         log('Failed to discover CoreHub: %s', discoveryError);
@@ -716,7 +760,9 @@ export class GluesyncClient extends EventEmitter {
         if (previousHost) {
           this.host = previousHost;
         }
-        throw new GluesyncConnectionError(`Failed to discover CoreHub: ${discoveryError}`);
+        throw new GluesyncConnectionError(
+          `Failed to discover CoreHub: ${discoveryError}`,
+        );
       }
     } catch (error) {
       // Log the error and rethrow
