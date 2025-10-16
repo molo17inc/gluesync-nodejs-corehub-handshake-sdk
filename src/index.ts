@@ -32,7 +32,6 @@ debug.enable('gluesync:*');
 export { GluesyncClient } from './client';
 export { WebSocketConnection } from './connection';
 export { CoreHubDiscovery, getCorehubAddress } from './discovery';
-export { createSslContextFromJks } from './utils';
 
 // Export exceptions
 export {
