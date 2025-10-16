@@ -33,9 +33,6 @@ async function main() {
       moduleTag: 'nodejs-example',
       // Set to true if you need SSL
       ssl: false,
-      // Uncomment if using SSL
-      // keystorePath: './keystore.jks',
-      // keystorePassword: 'password',
       timeout: 10000,
     });
 

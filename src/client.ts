@@ -24,9 +24,8 @@ import * as fs from 'fs-extra';
 import * as tls from 'tls';
 import { EventEmitter } from 'events';
 import debug from 'debug';
-
 import { WebSocketConnection, CallbackFunction } from './connection';
-import { createSslContextFromJks } from './utils';
+import { createSslContext, loadCredentials } from './utils';
 import { getCorehubAddress } from './discovery';
 import {
   GluesyncError,
@@ -35,6 +34,7 @@ import {
   GluesyncLicenseError,
   GluesyncSSLError,
 } from './exceptions';
+import path from 'path';
 
 // Set up debug logger
 const log = debug('gluesync:client');
@@ -79,8 +79,6 @@ export class GluesyncClient extends EventEmitter {
    * @param options.licenseFilePath - Path to the gs-license.dat file
    * @param options.moduleTag - Name/tag for this module
    * @param options.ssl - Whether to use SSL/TLS for the connection
-   * @param options.keystorePath - Path to the JKS keystore file (required if ssl=true)
-   * @param options.keystorePassword - Password for the JKS keystore (required if ssl=true)
    * @param options.pingInterval - Interval in milliseconds between ping messages
    * @param options.timeout - Connection timeout in milliseconds
    * @param options.discoveryStartPort - Base port for UDP discovery
@@ -93,8 +91,6 @@ export class GluesyncClient extends EventEmitter {
     moduleTag = 'nodejs-module',
     ssl = false,
     verifySsl = true,
-    keystorePath = null,
-    keystorePassword = null,
     pingInterval = 5,
     timeout = 10000,
     discoveryStartPort = 1717,
@@ -106,8 +102,6 @@ export class GluesyncClient extends EventEmitter {
     moduleTag?: string;
     ssl?: boolean;
     verifySsl?: boolean;
-    keystorePath?: string | null;
-    keystorePassword?: string | null;
     pingInterval?: number;
     timeout?: number;
     discoveryStartPort?: number;
@@ -133,12 +127,6 @@ export class GluesyncClient extends EventEmitter {
 
     // SSL context setup
     if (this.useSSL) {
-      if (!keystorePath || !keystorePassword) {
-        throw new GluesyncSSLError(
-          'Keystore path and password are required for SSL connections',
-        );
-      }
-
       // We'll initialize the SSL context when connecting to avoid
       // blocking the constructor with async operations
 
@@ -289,17 +277,25 @@ export class GluesyncClient extends EventEmitter {
         }
       }
 
-      // Set up SSL options if needed
       if (this.useSSL && !this.sslOptions) {
         try {
-          // Get keystore path and password from constructor parameters or environment variables
-          const keystorePath = process.env.KEYSTORE_PATH || '';
-          const keystorePassword = process.env.KEYSTORE_PASSWORD || '';
+          const securityConfigPath = process.env.GLUESYNC_SECURITY_CONFIG;
+          const { certPath, keyPath, password } =
+            await loadCredentials(securityConfigPath);
 
-          this.sslOptions = await createSslContextFromJks(
-            keystorePath,
-            keystorePassword,
-          );
+          if (!certPath || !keyPath) {
+            throw new GluesyncSSLError(
+              'Certificate and key paths are required for SSL connections',
+            );
+          }
+
+          if (!password) {
+            throw new GluesyncSSLError(
+              'Password are required for SSL connections',
+            );
+          }
+
+          this.sslOptions = await createSslContext(certPath, keyPath, password);
           log('SSL context created successfully');
         } catch (error) {
           log('Failed to create SSL context: %s', error);
