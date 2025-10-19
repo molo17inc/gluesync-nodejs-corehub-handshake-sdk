@@ -52,6 +52,7 @@ export class WebSocketConnection extends EventEmitter {
   private pingInterval: number;
   private timeout: number;
   private verifySsl: boolean;
+  private connectionId: string;
 
   private ws: WebSocket | null = null;
   private _token: string | null = null;
@@ -93,7 +94,10 @@ export class WebSocketConnection extends EventEmitter {
     this.timeout = timeout;
     this.verifySsl = verifySsl;
 
-    log('WebSocketConnection initialized for %s:%d', host, port);
+    // Generate unique connection ID for tracking
+    this.connectionId = Math.random().toString(36).substr(2, 9);
+
+    log('WebSocketConnection [%s] initialized for %s:%d', this.connectionId, host, port);
   }
 
   /**
@@ -143,7 +147,7 @@ export class WebSocketConnection extends EventEmitter {
     }
 
     try {
-      log('Connecting to %s', this.connectionUrl);
+      log('WebSocketConnection [%s] connecting to %s', this.connectionId, this.connectionUrl);
 
       // Create WebSocket connection
       const wsOptions = {
@@ -187,7 +191,7 @@ export class WebSocketConnection extends EventEmitter {
         }),
       ]);
 
-      log('Connected to %s', this.connectionUrl);
+      log('WebSocketConnection [%s] connected to %s', this.connectionId, this.connectionUrl);
 
       // Wait for the token response (hello was already sent in open handler)
       const response = await Promise.race([
@@ -213,7 +217,7 @@ export class WebSocketConnection extends EventEmitter {
       const oldToken = this._token;
       this._token = response;
       this.connected = true;
-      log('Authentication successful, received token');
+      log('WebSocketConnection [%s] authentication successful, received token', this.connectionId);
 
       // Notify about token update if it has changed
       if (oldToken !== this._token && this.onTokenUpdated) {
@@ -311,9 +315,9 @@ export class WebSocketConnection extends EventEmitter {
 
       // Handle pong messages (responses to our ping)
       if (message === 'pong') {
-        // log('Received pong from CoreHub');
+        // log('WebSocketConnection [%s] received pong from CoreHub', this.connectionId);
       } else {
-        log('Received unexpected message: %s', message);
+        log('WebSocketConnection [%s] received unexpected message: %s', this.connectionId, message);
       }
     });
 
