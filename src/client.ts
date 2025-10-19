@@ -91,7 +91,7 @@ export class GluesyncClient extends EventEmitter {
     moduleTag = 'nodejs-module',
     ssl = false,
     verifySsl = true,
-    pingInterval = 5,
+    pingInterval = 1000,
     timeout = 10000,
     discoveryStartPort = 1717,
     discoveryPortRange = 10,

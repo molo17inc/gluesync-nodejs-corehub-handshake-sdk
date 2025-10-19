@@ -309,11 +309,11 @@ export class WebSocketConnection extends EventEmitter {
     this.ws.on('message', (data: WebSocket.Data) => {
       const message = data.toString();
 
-      // Handle ping messages
-      if (message === 'ping') {
-        this.sendMessage('pong').catch(error => {
-          log('Failed to send pong: %s', error);
-        });
+      // Handle pong messages (responses to our ping)
+      if (message === 'pong') {
+        log('Received pong from CoreHub');
+      } else {
+        log('Received unexpected message: %s', message);
       }
     });
 
