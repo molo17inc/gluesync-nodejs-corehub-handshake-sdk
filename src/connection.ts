@@ -311,7 +311,7 @@ export class WebSocketConnection extends EventEmitter {
 
       // Handle pong messages (responses to our ping)
       if (message === 'pong') {
-        log('Received pong from CoreHub');
+        // log('Received pong from CoreHub');
       } else {
         log('Received unexpected message: %s', message);
       }
