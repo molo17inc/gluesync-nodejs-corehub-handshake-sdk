@@ -94,7 +94,6 @@ export const createSslContext = async (
       cert,
       key,
       passphrase: password,
-      rejectUnauthorized: false,
     };
   } catch (error) {
     throw new Error(`Failed to create SSL context: ${error}`);

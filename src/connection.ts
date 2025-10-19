@@ -157,6 +157,9 @@ export class WebSocketConnection extends EventEmitter {
         ...this.sslOptions,
       };
 
+      log('WebSocketConnection [%s] SSL verification: %s, SSL options provided: %s',
+        this.connectionId, this.verifySsl, !!this.sslOptions);
+
       // Create connection with timeout
       const connectionPromise = new Promise<WebSocket>((resolve, reject) => {
         const ws = new WebSocket(this.connectionUrl, wsOptions) as WebSocket;
@@ -172,6 +175,14 @@ export class WebSocketConnection extends EventEmitter {
         });
 
         ws.once('error', (err: Error) => {
+          // Log SSL-specific error details
+          if (err.message.includes('certificate') || err.message.includes('SSL') || err.message.includes('TLS')) {
+            log('WebSocketConnection [%s] SSL/TLS error: %s', this.connectionId, err.message);
+            log('WebSocketConnection [%s] SSL verification enabled: %s', this.connectionId, this.verifySsl);
+            if (err.message.includes('certificate verify failed')) {
+              log('WebSocketConnection [%s] Certificate verification failed. You may need to set verifySsl=false for self-signed certificates', this.connectionId);
+            }
+          }
           reject(
             new GluesyncConnectionError(`Connection error: ${err.message}`),
           );
