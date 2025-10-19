@@ -157,8 +157,14 @@ export class WebSocketConnection extends EventEmitter {
       const connectionPromise = new Promise<WebSocket>((resolve, reject) => {
         const ws = new WebSocket(this.connectionUrl, wsOptions) as WebSocket;
 
-        ws.once('open', () => {
-          resolve(ws);
+        ws.once('open', async () => {
+          try {
+            // Send "hello" immediately when connection opens
+            ws.send('hello');
+            resolve(ws);
+          } catch (error) {
+            reject(error);
+          }
         });
 
         ws.once('error', (err: Error) => {
@@ -183,11 +189,7 @@ export class WebSocketConnection extends EventEmitter {
 
       log('Connected to %s', this.connectionUrl);
 
-      // Start the handshake by sending "hello"
-      await this.sendMessage('hello');
-      log('Sent "hello" message to CoreHub');
-
-      // Wait for the token response
+      // Wait for the token response (hello was already sent in open handler)
       const response = await Promise.race([
         this.receiveMessage(),
         createTimeout(
