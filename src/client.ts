@@ -63,6 +63,7 @@ export class GluesyncClient extends EventEmitter {
 
   // Reconnection state
   private _reconnecting: boolean = false;
+  private _connecting: boolean = false;
   private _reconnectTimer: NodeJS.Timeout | null = null;
   private _initialReconnectDelay: number = 1000; // 1 second
   private _maxReconnectDelay: number = 30000; // 30 seconds
@@ -243,11 +244,18 @@ export class GluesyncClient extends EventEmitter {
    * @throws GluesyncConnectionError if the connection fails
    * @throws GluesyncAuthenticationError if authentication fails
    */
-  public async connect(): Promise<string> {
+public async connect(): Promise<string> {
     if (this.isConnected) {
       log('Already connected to CoreHub');
       return this.token!;
     }
+
+    if (this._connecting) {
+      log('Connection attempt already in progress');
+      throw new GluesyncConnectionError('Connection attempt already in progress');
+    }
+
+    this._connecting = true;
 
     // Reset connection state
     this._connected = false;
@@ -336,6 +344,8 @@ export class GluesyncClient extends EventEmitter {
       }
 
       throw new GluesyncConnectionError(`Failed to connect: ${error}`);
+    } finally {
+      this._connecting = false;
     }
   }
 
