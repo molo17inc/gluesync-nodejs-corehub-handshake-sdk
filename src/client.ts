@@ -67,9 +67,9 @@ export class GluesyncClient extends EventEmitter {
   private _reconnectTimer: NodeJS.Timeout | null = null;
   private _initialReconnectDelay: number = 1000; // 1 second
   private _maxReconnectDelay: number = 30000; // 30 seconds
-  private _reconnectBackoffMultiplier: number = 1.5;
+  private _reconnectBackoffMultiplier: number = 2; // Double each time for exponential backoff
   private _reconnectAttempts: number = 0;
-  private _maxReconnectAttempts: number = 10;
+  private _cycleCount: number = 0; // Track backoff cycles
 
   /**
    * Initialize the Gluesync client.
@@ -239,12 +239,13 @@ export class GluesyncClient extends EventEmitter {
    *
    * If a host was not explicitly provided in constructor, this method will
    * attempt to discover the CoreHub on the local network before connecting.
+   * Retries indefinitely with exponential backoff until successful.
    *
    * @returns Promise resolving to the JWT token received from the server
-   * @throws GluesyncConnectionError if the connection fails
-   * @throws GluesyncAuthenticationError if authentication fails
+   * @throws GluesyncLicenseError if the license file cannot be read
+   * @throws GluesyncSSLError if SSL setup fails
    */
-public async connect(): Promise<string> {
+  public async connect(): Promise<string> {
     if (this.isConnected) {
       log('Already connected to CoreHub');
       return this.token!;
@@ -260,92 +261,140 @@ public async connect(): Promise<string> {
     // Reset connection state
     this._connected = false;
 
-    try {
-      // Use autodiscovery if host is not provided
-      let host = this.host;
-      if (host === null) {
-        try {
-          log('No host provided, using UDP autodiscovery to find CoreHub...');
-          host = await getCorehubAddress(
-            'CORE_HUB_ADDRESS',
-            this.discoveryStartPort,
-            this.discoveryPortRange,
-            this.timeout,
-            this.verifySsl,
-          );
+    // Retry logic with exponential backoff
+    let retryCount = 0;
+    let backoffDelay = 1000; // Start with 1 second
+    const maxBackoff = 30000; // Maximum backoff of 30 seconds
+    let cycleCount = 0;
 
-          // Save the discovered host
-          this.host = host;
-          log('CoreHub discovered at %s', host);
-        } catch (error) {
-          log('Failed to discover CoreHub: %s', error);
-          throw new GluesyncConnectionError(
-            `Failed to discover CoreHub: ${error}`,
-          );
-        }
-      }
+    // Retry indefinitely until connected
+    while (true) {
+      try {
+        // Use autodiscovery if host is not provided
+        let host = this.host;
+        if (host === null) {
+          try {
+            if (retryCount > 0) {
+              log(
+                'Retry %d (cycle %d) for UDP discovery...',
+                retryCount,
+                cycleCount,
+              );
+            } else {
+              log('No host provided, using UDP autodiscovery to find CoreHub...');
+            }
 
-      if (this.useSSL && !this.sslOptions) {
-        try {
-          const securityConfigPath = process.env.GLUESYNC_SECURITY_CONFIG;
-          const { certPath, keyPath, password } =
-            await loadCredentials(securityConfigPath);
+            host = await getCorehubAddress(
+              'CORE_HUB_ADDRESS',
+              this.discoveryStartPort,
+              this.discoveryPortRange,
+              this.timeout,
+              this.verifySsl,
+            );
 
-          if (!certPath || !keyPath) {
-            throw new GluesyncSSLError(
-              'Certificate and key paths are required for SSL connections',
+            // Save the discovered host
+            this.host = host;
+            log('CoreHub discovered at %s', host);
+          } catch (error) {
+            log('Failed to discover CoreHub: %s', error);
+            throw new GluesyncConnectionError(
+              `Failed to discover CoreHub: ${error}`,
             );
           }
-
-          if (!password) {
-            throw new GluesyncSSLError(
-              'Password are required for SSL connections',
+        } else {
+          if (retryCount === 0) {
+            log('Connecting to CoreHub at %s:%d...', host, this.port);
+          } else {
+            log(
+              'Retry %d (cycle %d) connecting to CoreHub at %s:%d...',
+              retryCount,
+              cycleCount,
+              host,
+              this.port,
             );
           }
+        }
 
-          this.sslOptions = await createSslContext(certPath, keyPath, password);
-          log('SSL context created successfully');
-        } catch (error) {
-          log('Failed to create SSL context: %s', error);
-          throw new GluesyncSSLError(`Failed to create SSL context: ${error}`);
+        if (this.useSSL && !this.sslOptions) {
+          try {
+            const securityConfigPath = process.env.GLUESYNC_SECURITY_CONFIG;
+            const { certPath, keyPath, password } =
+              await loadCredentials(securityConfigPath);
+
+            if (!certPath || !keyPath) {
+              throw new GluesyncSSLError(
+                'Certificate and key paths are required for SSL connections',
+              );
+            }
+
+            if (!password) {
+              throw new GluesyncSSLError(
+                'Password are required for SSL connections',
+              );
+            }
+
+            this.sslOptions = await createSslContext(certPath, keyPath, password);
+            log('SSL context created successfully');
+          } catch (error) {
+            log('Failed to create SSL context: %s', error);
+            throw new GluesyncSSLError(`Failed to create SSL context: ${error}`);
+          }
+        }
+
+        // Create the connection
+        this.connection = new WebSocketConnection(
+          host,
+          this.port,
+          this.getConnectionHeaders(),
+          this.sslOptions,
+          this.pingInterval,
+          this.timeout,
+          this.verifySsl,
+        );
+
+        // Set up event handlers
+        this.connection.onConnected = this._onConnected;
+        this.connection.onDisconnected = this._onDisconnected;
+        this.connection.onError = this._onError;
+        this.connection.onTokenUpdated = this._notifyTokenUpdated.bind(this);
+
+        // Connect to the server
+        const token = await this.connection.connect();
+        this._token = token;
+        this._connected = true;
+
+        log('Connected to CoreHub at %s:%d', host, this.port);
+        this._connecting = false;
+        return token;
+      } catch (error) {
+        // Don't retry for license or SSL errors
+        if (
+          error instanceof GluesyncLicenseError ||
+          error instanceof GluesyncSSLError
+        ) {
+          log('Fatal error, not retrying: %s', error);
+          this._connecting = false;
+          throw error;
+        }
+
+        // Connection failed, retry with exponential backoff
+        retryCount++;
+        log('Connection attempt %d failed: %s', retryCount, error);
+        log('Waiting %d ms before next retry...', backoffDelay);
+
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, backoffDelay));
+
+        // Double the backoff for next time, up to the maximum
+        backoffDelay = Math.min(backoffDelay * 2, maxBackoff);
+
+        // If we've reached max backoff, reset on the next failure
+        if (backoffDelay >= maxBackoff) {
+          backoffDelay = 1000; // Reset to 1 second
+          cycleCount++;
+          log('Completed backoff cycle %d, resetting delay to 1 second', cycleCount);
         }
       }
-
-      // Create the connection
-      this.connection = new WebSocketConnection(
-        host,
-        this.port,
-        this.getConnectionHeaders(),
-        this.sslOptions,
-        this.pingInterval,
-        this.timeout,
-        this.verifySsl,
-      );
-
-      // Set up event handlers
-      this.connection.onConnected = this._onConnected;
-      this.connection.onDisconnected = this._onDisconnected;
-      this.connection.onError = this._onError;
-      this.connection.onTokenUpdated = this._notifyTokenUpdated.bind(this);
-
-      // Connect to the server
-      const token = await this.connection.connect();
-      this._token = token;
-      this._connected = true;
-
-      log('Connected to CoreHub at %s:%d', host, this.port);
-      return token;
-    } catch (error) {
-      log('Connection failed: %s', error);
-
-      // Forward the appropriate error type
-      if (error instanceof GluesyncError) {
-        throw error;
-      }
-
-      throw new GluesyncConnectionError(`Failed to connect: ${error}`);
-    } finally {
-      this._connecting = false;
     }
   }
 
@@ -552,18 +601,9 @@ public async connect(): Promise<string> {
 
   /**
    * Schedule a reconnection attempt with exponential backoff.
+   * Retries indefinitely until successful.
    */
   private _scheduleReconnect(): void {
-    // Check if we've exceeded the maximum number of attempts
-    if (this._reconnectAttempts >= this._maxReconnectAttempts) {
-      log(
-        'Maximum reconnection attempts (%d) reached. Giving up.',
-        this._maxReconnectAttempts,
-      );
-      this._reconnecting = false;
-      return;
-    }
-
     // Increment the reconnect attempts counter
     this._reconnectAttempts++;
 
@@ -575,8 +615,9 @@ public async connect(): Promise<string> {
     );
 
     log(
-      'Scheduling reconnection attempt %d in %d ms...',
+      'Scheduling reconnection attempt %d (cycle %d) in %d ms...',
       this._reconnectAttempts,
+      this._cycleCount,
       delay,
     );
 
@@ -585,7 +626,14 @@ public async connect(): Promise<string> {
       this._attemptReconnect().catch(error => {
         log('Reconnection attempt failed: %s', error);
 
-        // If we failed to reconnect, schedule the next attempt
+        // If we've reached max backoff, reset the delay and increment cycle count
+        if (delay >= this._maxReconnectDelay) {
+          this._reconnectAttempts = 0; // Reset attempts to restart backoff
+          this._cycleCount++;
+          log('Completed backoff cycle %d, resetting delay to 1 second', this._cycleCount);
+        }
+
+        // Always schedule the next attempt (retry indefinitely)
         if (this._reconnecting) {
           this._scheduleReconnect();
         }
@@ -597,14 +645,15 @@ public async connect(): Promise<string> {
    * Attempt to reconnect to the CoreHub.
    * First tries to reconnect to the specified/known host.
    * If that fails, attempts to re-discover the CoreHub in case its IP address has changed.
+   * Retries indefinitely until successful.
    *
    * @returns The authentication token if reconnection is successful
    */
   private async _attemptReconnect(): Promise<string> {
     log(
-      'Attempting to reconnect (attempt %d of %d)...',
+      'Attempting to reconnect (attempt %d, cycle %d)...',
       this._reconnectAttempts,
-      this._maxReconnectAttempts,
+      this._cycleCount,
     );
 
     try {
