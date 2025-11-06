@@ -28,13 +28,11 @@ import { WebSocketConnection, CallbackFunction } from './connection';
 import { createSslContext, loadCredentials } from './utils';
 import { getCorehubAddress } from './discovery';
 import {
-  GluesyncError,
   GluesyncConnectionError,
   // GluesyncAuthenticationError,
   GluesyncLicenseError,
   GluesyncSSLError,
 } from './exceptions';
-import path from 'path';
 
 // Set up debug logger
 const log = debug('gluesync:client');
@@ -253,7 +251,9 @@ export class GluesyncClient extends EventEmitter {
 
     if (this._connecting) {
       log('Connection attempt already in progress');
-      throw new GluesyncConnectionError('Connection attempt already in progress');
+      throw new GluesyncConnectionError(
+        'Connection attempt already in progress',
+      );
     }
 
     this._connecting = true;
@@ -268,6 +268,7 @@ export class GluesyncClient extends EventEmitter {
     let cycleCount = 0;
 
     // Retry indefinitely until connected
+    // eslint-disable-next-line no-constant-condition
     while (true) {
       try {
         // Use autodiscovery if host is not provided
@@ -281,7 +282,9 @@ export class GluesyncClient extends EventEmitter {
                 cycleCount,
               );
             } else {
-              log('No host provided, using UDP autodiscovery to find CoreHub...');
+              log(
+                'No host provided, using UDP autodiscovery to find CoreHub...',
+              );
             }
 
             host = await getCorehubAddress(
@@ -333,11 +336,17 @@ export class GluesyncClient extends EventEmitter {
               );
             }
 
-            this.sslOptions = await createSslContext(certPath, keyPath, password);
+            this.sslOptions = await createSslContext(
+              certPath,
+              keyPath,
+              password,
+            );
             log('SSL context created successfully');
           } catch (error) {
             log('Failed to create SSL context: %s', error);
-            throw new GluesyncSSLError(`Failed to create SSL context: ${error}`);
+            throw new GluesyncSSLError(
+              `Failed to create SSL context: ${error}`,
+            );
           }
         }
 
@@ -392,7 +401,10 @@ export class GluesyncClient extends EventEmitter {
         if (backoffDelay >= maxBackoff) {
           backoffDelay = 1000; // Reset to 1 second
           cycleCount++;
-          log('Completed backoff cycle %d, resetting delay to 1 second', cycleCount);
+          log(
+            'Completed backoff cycle %d, resetting delay to 1 second',
+            cycleCount,
+          );
         }
       }
     }
@@ -630,7 +642,10 @@ export class GluesyncClient extends EventEmitter {
         if (delay >= this._maxReconnectDelay) {
           this._reconnectAttempts = 0; // Reset attempts to restart backoff
           this._cycleCount++;
-          log('Completed backoff cycle %d, resetting delay to 1 second', this._cycleCount);
+          log(
+            'Completed backoff cycle %d, resetting delay to 1 second',
+            this._cycleCount,
+          );
         }
 
         // Always schedule the next attempt (retry indefinitely)
