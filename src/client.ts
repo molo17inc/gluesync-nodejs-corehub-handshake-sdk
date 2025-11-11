@@ -53,7 +53,6 @@ export class GluesyncClient extends EventEmitter {
   private discoveryPortRange: number;
 
   private licenseFilePath: string;
-  private licenseContent: string | null = null;
 
   private sslOptions: tls.ConnectionOptions | null = null;
   private connection: WebSocketConnection | null = null;
@@ -440,15 +439,15 @@ export class GluesyncClient extends EventEmitter {
    * @throws GluesyncLicenseError if the license file cannot be read
    */
   private getLicenseContent(): string {
-    if (this.licenseContent === null) {
-      try {
+    let licenseContent;
+    try {
         if (!fs.existsSync(this.licenseFilePath)) {
           throw new GluesyncLicenseError(
             `License file not found: ${this.licenseFilePath}`,
           );
         }
 
-        this.licenseContent = fs
+        licenseContent = fs
           .readFileSync(this.licenseFilePath, 'utf8')
           .trim();
       } catch (error) {
@@ -457,9 +456,8 @@ export class GluesyncClient extends EventEmitter {
         }
         throw new GluesyncLicenseError(`Failed to read license file: ${error}`);
       }
-    }
 
-    return this.licenseContent;
+    return licenseContent;
   }
 
   /**
