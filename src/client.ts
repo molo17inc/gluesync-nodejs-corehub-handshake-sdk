@@ -539,6 +539,10 @@ export class GluesyncClient extends EventEmitter {
         log('Error in onError callback: %s', callbackError);
       }
     }
+
+    if (!this._reconnecting && !this._connecting && !this.isConnected) {
+      this._startReconnect();
+    }
   }
 
   /**
