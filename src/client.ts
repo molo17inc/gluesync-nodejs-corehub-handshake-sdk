@@ -51,6 +51,7 @@ export class GluesyncClient extends EventEmitter {
   private timeout: number;
   private discoveryStartPort: number;
   private discoveryPortRange: number;
+  private _endpointAlreadyKnown: boolean = false;
 
   private licenseFilePath: string;
 
@@ -371,6 +372,9 @@ export class GluesyncClient extends EventEmitter {
         this._token = token;
         this._connected = true;
 
+        // Freeze endpoint once we have a working host
+        this._endpointAlreadyKnown = true;
+
         log('Connected to CoreHub at %s:%d', host, this.port);
         this._connecting = false;
         return token;
@@ -441,21 +445,19 @@ export class GluesyncClient extends EventEmitter {
   private getLicenseContent(): string {
     let licenseContent;
     try {
-        if (!fs.existsSync(this.licenseFilePath)) {
-          throw new GluesyncLicenseError(
-            `License file not found: ${this.licenseFilePath}`,
-          );
-        }
-
-        licenseContent = fs
-          .readFileSync(this.licenseFilePath, 'utf8')
-          .trim();
-      } catch (error) {
-        if (error instanceof GluesyncLicenseError) {
-          throw error;
-        }
-        throw new GluesyncLicenseError(`Failed to read license file: ${error}`);
+      if (!fs.existsSync(this.licenseFilePath)) {
+        throw new GluesyncLicenseError(
+          `License file not found: ${this.licenseFilePath}`,
+        );
       }
+
+      licenseContent = fs.readFileSync(this.licenseFilePath, 'utf8').trim();
+    } catch (error) {
+      if (error instanceof GluesyncLicenseError) {
+        throw error;
+      }
+      throw new GluesyncLicenseError(`Failed to read license file: ${error}`);
+    }
 
     return licenseContent;
   }
@@ -674,7 +676,67 @@ export class GluesyncClient extends EventEmitter {
     );
 
     try {
-      // If a specific host is known, try direct reconnection first
+      // 1. If we have an already known endpoint, always try direct reconnect
+      if (this._endpointAlreadyKnown && this.host !== null) {
+        try {
+          log(
+            'Endpoint alredy found, attempting direct reconnection to %s:%d...',
+            this.host,
+            this.port,
+          );
+
+          this.connection = new WebSocketConnection(
+            this.host,
+            this.port,
+            this.getConnectionHeaders(),
+            this.sslOptions,
+            this.pingInterval,
+            this.timeout,
+            this.verifySsl,
+          );
+
+          this.connection.onConnected = this._onConnected;
+          this.connection.onDisconnected = this._onDisconnected;
+          this.connection.onError = this._onError;
+          this.connection.onTokenUpdated = this._notifyTokenUpdated.bind(this);
+
+          const token = await this.connection.connect();
+          this._token = token;
+          this._connected = true;
+
+          log(
+            'Successfully reconnected to already known endpoint %s:%d',
+            this.host,
+            this.port,
+          );
+          this._reconnecting = false;
+          this._reconnectAttempts = 0;
+
+          this.emit('reconnected', token);
+          if (this.onReconnected) {
+            const result = this.onReconnected(token);
+            if (result instanceof Promise) {
+              await result;
+            }
+          }
+          await this._notifyTokenUpdated(token);
+          return token;
+        } catch (reconnectError) {
+          log(
+            'Direct reconnection to already known endpoint %s:%d failed: %s',
+            this.host,
+            this.port,
+            reconnectError,
+          );
+          // IMPORTANT: do NOT clear host, just let the caller schedule another attempt
+          throw new GluesyncConnectionError(
+            `Failed to reconnect to already known endpoint: ${reconnectError}`,
+          );
+        }
+      }
+
+      // 2. If endpoint is not yet known (first connection phase),
+      //    keep the original behavior: try host if set, then autodiscovery.
       if (this.host !== null) {
         try {
           log(
@@ -703,6 +765,9 @@ export class GluesyncClient extends EventEmitter {
           const token = await this.connection.connect();
           this._token = token;
           this._connected = true;
+
+          // Freeze on first successful reconnect too
+          this._endpointAlreadyKnown = true;
 
           // Successfully reconnected
           log(
@@ -746,8 +811,8 @@ export class GluesyncClient extends EventEmitter {
         }
       }
 
-      // Either no host was provided initially or direct reconnection failed,
-      // so attempt discovery
+      // 3. Only reach here when host is null and endpoint is not known:
+      //    initial discovery phase.
 
       // Store previous host before clearing it for re-discovery
       const previousHost = this.host;
@@ -795,6 +860,9 @@ export class GluesyncClient extends EventEmitter {
         const newToken = await this.connection.connect();
         this._token = newToken;
         this._connected = true;
+
+        // Freeze endpoint host and port after first successful discovery
+        this._endpointAlreadyKnown = true;
 
         // Successfully reconnected
         log(
