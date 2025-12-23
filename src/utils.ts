@@ -129,10 +129,9 @@ export const loadCredentials = async (
         password:
           config.ssl.certificatePassword || process.env.SSL_CERT_PASSWORD,
       };
-    } else {
-      console.warn(
-        'Security config file not found, using environment variables',
-      );
+    }
+    else {
+      console.log('Security config file not found, using environment variables');
     }
   } catch (error) {
     console.warn(
