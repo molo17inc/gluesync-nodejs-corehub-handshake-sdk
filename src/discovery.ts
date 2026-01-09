@@ -22,10 +22,10 @@
 
 import * as dgram from 'dgram';
 import { /* createTimeout, */ generateId } from './utils';
-import debug from 'debug';
+import debugTZ from './debugTZ';
 
 // Set up debug logger
-const log = debug('gluesync:discovery');
+const log = debugTZ('gluesync:discovery');
 
 // Constants for discovery
 export const DISCOVERY_MESSAGE = Buffer.from('GLUESYNC BROADCAST MESSAGE');

@@ -23,7 +23,6 @@
 import WebSocket from 'ws';
 import { EventEmitter } from 'events';
 import * as tls from 'tls';
-import debug from 'debug';
 import {
   GluesyncAuthenticationError,
   GluesyncConnectionError,
@@ -32,9 +31,10 @@ import {
   GluesyncTimeoutError,
 } from './exceptions';
 import { createTimeout, getErrorFromCloseReason } from './utils';
+import debugTZ from './debugTZ';
 
 // Set up debug logger
-const log = debug('gluesync:connection');
+const log = debugTZ('gluesync:connection');
 
 /**
  * Type definition for callback functions
@@ -97,7 +97,12 @@ export class WebSocketConnection extends EventEmitter {
     // Generate unique connection ID for tracking
     this.connectionId = Math.random().toString(36).substr(2, 9);
 
-    log('WebSocketConnection [%s] initialized for %s:%d', this.connectionId, host, port);
+    log(
+      'WebSocketConnection [%s] initialized for %s:%d',
+      this.connectionId,
+      host,
+      port,
+    );
   }
 
   /**
@@ -147,7 +152,11 @@ export class WebSocketConnection extends EventEmitter {
     }
 
     try {
-      log('WebSocketConnection [%s] connecting to %s', this.connectionId, this.connectionUrl);
+      log(
+        'WebSocketConnection [%s] connecting to %s',
+        this.connectionId,
+        this.connectionUrl,
+      );
 
       // Create WebSocket connection
       const wsOptions = {
@@ -157,8 +166,12 @@ export class WebSocketConnection extends EventEmitter {
         ...this.sslOptions,
       };
 
-      log('WebSocketConnection [%s] SSL verification: %s, SSL options provided: %s',
-        this.connectionId, this.verifySsl, !!this.sslOptions);
+      log(
+        'WebSocketConnection [%s] SSL verification: %s, SSL options provided: %s',
+        this.connectionId,
+        this.verifySsl,
+        !!this.sslOptions,
+      );
 
       // Create connection with timeout
       const connectionPromise = new Promise<WebSocket>((resolve, reject) => {
@@ -176,11 +189,26 @@ export class WebSocketConnection extends EventEmitter {
 
         ws.once('error', (err: Error) => {
           // Log SSL-specific error details
-          if (err.message.includes('certificate') || err.message.includes('SSL') || err.message.includes('TLS')) {
-            log('WebSocketConnection [%s] SSL/TLS error: %s', this.connectionId, err.message);
-            log('WebSocketConnection [%s] SSL verification enabled: %s', this.connectionId, this.verifySsl);
+          if (
+            err.message.includes('certificate') ||
+            err.message.includes('SSL') ||
+            err.message.includes('TLS')
+          ) {
+            log(
+              'WebSocketConnection [%s] SSL/TLS error: %s',
+              this.connectionId,
+              err.message,
+            );
+            log(
+              'WebSocketConnection [%s] SSL verification enabled: %s',
+              this.connectionId,
+              this.verifySsl,
+            );
             if (err.message.includes('certificate verify failed')) {
-              log('WebSocketConnection [%s] Certificate verification failed. You may need to set verifySsl=false for self-signed certificates', this.connectionId);
+              log(
+                'WebSocketConnection [%s] Certificate verification failed. You may need to set verifySsl=false for self-signed certificates',
+                this.connectionId,
+              );
             }
           }
           reject(
@@ -202,7 +230,11 @@ export class WebSocketConnection extends EventEmitter {
         }),
       ]);
 
-      log('WebSocketConnection [%s] connected to %s', this.connectionId, this.connectionUrl);
+      log(
+        'WebSocketConnection [%s] connected to %s',
+        this.connectionId,
+        this.connectionUrl,
+      );
 
       // Wait for the token response (hello was already sent in open handler)
       const response = await Promise.race([
@@ -228,7 +260,10 @@ export class WebSocketConnection extends EventEmitter {
       const oldToken = this._token;
       this._token = response;
       this.connected = true;
-      log('WebSocketConnection [%s] authentication successful, received token', this.connectionId);
+      log(
+        'WebSocketConnection [%s] authentication successful, received token',
+        this.connectionId,
+      );
 
       // Notify about token update if it has changed
       if (oldToken !== this._token && this.onTokenUpdated) {
@@ -328,7 +363,11 @@ export class WebSocketConnection extends EventEmitter {
       if (message === 'pong') {
         // log('WebSocketConnection [%s] received pong from CoreHub', this.connectionId);
       } else {
-        log('WebSocketConnection [%s] received unexpected message: %s', this.connectionId, message);
+        log(
+          'WebSocketConnection [%s] received unexpected message: %s',
+          this.connectionId,
+          message,
+        );
       }
     });
 

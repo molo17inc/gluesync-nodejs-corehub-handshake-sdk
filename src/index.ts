@@ -14,7 +14,7 @@
  *
  * 2. MOLO17 Commercial License
  *    Alternatively, you may use this software under the MOLO17 Commercial License,
- *    which includes a warranty and permits proprietary use. Contact MOLO17 at info@molo17.com
+ *    which includes a warranty and permits proprietary use. Contact MOLO17 at [info@molo17.com](mailto:info@molo17.com)
  *    for licensing terms and conditions.
  *
  * You must choose one of these licenses to use this software. Using this software implies
@@ -24,8 +24,11 @@
  * Copyright (C) 2025 MOLO17. All rights reserved.
  */
 
-// Configure default debug namespace for the SDK
+// Configure TZ-aware debug for the entire SDK
+import './debugTZ';
 import debug from 'debug';
+
+// Enable gluesync namespaces by default (user can override with DEBUG= env var)
 debug.enable('gluesync:*');
 
 // Export main components

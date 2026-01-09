@@ -23,7 +23,6 @@
 import * as fs from 'fs-extra';
 import * as tls from 'tls';
 import { EventEmitter } from 'events';
-import debug from 'debug';
 import { WebSocketConnection, CallbackFunction } from './connection';
 import { createSslContext, loadCredentials } from './utils';
 import { getCorehubAddress } from './discovery';
@@ -33,9 +32,10 @@ import {
   GluesyncLicenseError,
   GluesyncSSLError,
 } from './exceptions';
+import debugTZ from './debugTZ';
 
 // Set up debug logger
-const log = debug('gluesync:client');
+const log = debugTZ('gluesync:client');
 
 /**
  * Main client for interacting with Gluesync CoreHub services.
