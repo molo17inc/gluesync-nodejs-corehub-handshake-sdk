@@ -16,7 +16,7 @@ debug.log = function (...args: any[]) {
 // const originalFormatArgs = debug.formatArgs;
 
 debug.formatArgs = function formatArgs(this: Debugger, args: any[]): void {
-  const tz = process.env.TZ || 'UTC';
+  const tz = process.env.TZ || undefined;
 
   const now = new Date();
   const local = now.toLocaleString('en-US', {
