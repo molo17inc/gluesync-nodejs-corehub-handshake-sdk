@@ -37,6 +37,16 @@ import debugTZ from './debugTZ';
 const log = debugTZ('gluesync:connection');
 
 /**
+ * Default time without an answer from CoreHub before the connection is closed.
+ *
+ * It stays above CoreHub's own detection of a dead module connection (a WebSocket
+ * ping every minute with a 10 minute timeout): CoreHub versions that remove a
+ * module whenever one of its connections closes would otherwise drop a module that
+ * reconnected before CoreHub cleaned up its old connection.
+ */
+export const DEFAULT_PONG_TIMEOUT_MS = 12 * 60 * 1000;
+
+/**
  * Type definition for callback functions
  */
 export type CallbackFunction<T = any> = (param: T) => void | Promise<void>;
@@ -52,12 +62,14 @@ export class WebSocketConnection extends EventEmitter {
   private pingInterval: number;
   private timeout: number;
   private verifySsl: boolean;
+  private pongTimeout: number;
   private connectionId: string;
 
   private ws: WebSocket | null = null;
   private _token: string | null = null;
   private pingIntervalId: NodeJS.Timeout | null = null;
   private connected: boolean = false;
+  private unansweredPings: number = 0;
 
   // Event handlers
   public onConnected: CallbackFunction<string> | null = null;
@@ -75,6 +87,8 @@ export class WebSocketConnection extends EventEmitter {
    * @param pingInterval - Interval in milliseconds between ping messages
    * @param timeout - Connection timeout in milliseconds
    * @param verifySsl - Whether to verify SSL certificates (default: true)
+   * @param pongTimeout - Close the connection when nothing arrives from CoreHub for
+   *   this many milliseconds (0 disables the check)
    */
   constructor(
     host: string,
@@ -84,6 +98,7 @@ export class WebSocketConnection extends EventEmitter {
     pingInterval: number = 1,
     timeout: number = 10000,
     verifySsl: boolean = true,
+    pongTimeout: number = DEFAULT_PONG_TIMEOUT_MS,
   ) {
     super();
     this.host = host;
@@ -93,6 +108,7 @@ export class WebSocketConnection extends EventEmitter {
     this.pingInterval = pingInterval;
     this.timeout = timeout;
     this.verifySsl = verifySsl;
+    this.pongTimeout = pongTimeout;
 
     // Generate unique connection ID for tracking
     this.connectionId = Math.random().toString(36).substr(2, 9);
@@ -271,6 +287,7 @@ export class WebSocketConnection extends EventEmitter {
       }
 
       // Set up message handlers and ping loop
+      this.unansweredPings = 0;
       this.setupMessageHandlers();
       this.startPingLoop();
 
@@ -357,6 +374,7 @@ export class WebSocketConnection extends EventEmitter {
 
     // Handle incoming messages
     this.ws.on('message', (data: WebSocket.Data) => {
+      this.unansweredPings = 0;
       const message = data.toString();
 
       // Handle pong messages (responses to our ping)
@@ -409,13 +427,35 @@ export class WebSocketConnection extends EventEmitter {
 
     // Start a new ping loop
     this.pingIntervalId = setInterval(() => {
-      if (this.isConnected) {
-        this.sendMessage('ping').catch(error => {
-          log('Failed to send ping: %s', error);
-        });
-      } else {
+      if (!this.isConnected) {
         this.stopPingLoop();
+        return;
       }
+
+      // CoreHub answers every ping with a pong. When nothing comes back the
+      // connection is dead even if the socket still looks open, so close it:
+      // the close handler reports the disconnection and the client reconnects.
+      // Unanswered pings are counted instead of measuring time, so a process
+      // that was paused (host asleep, VM suspended) does not drop a healthy
+      // connection on its first tick after resuming.
+      if (
+        this.pongTimeout > 0 &&
+        this.unansweredPings * this.pingInterval >= this.pongTimeout
+      ) {
+        log(
+          'WebSocketConnection [%s] no answer to the last %d pings, closing the connection',
+          this.connectionId,
+          this.unansweredPings,
+        );
+        this.stopPingLoop();
+        this.ws?.terminate();
+        return;
+      }
+
+      this.unansweredPings++;
+      this.sendMessage('ping').catch(error => {
+        log('Failed to send ping: %s', error);
+      });
     }, this.pingInterval);
   }
 
