@@ -3,10 +3,10 @@
  * /ext-module protocol: "hello" is answered with a token, "ping" with "pong".
  */
 
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
-import { AddressInfo } from 'net';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { AddressInfo } from 'node:net';
 import WebSocket, { WebSocketServer } from 'ws';
 import { GluesyncClient } from '../src/client';
 import { WebSocketConnection } from '../src/connection';
@@ -18,7 +18,7 @@ jest.mock('../src/discovery', () => ({ getCorehubAddress: jest.fn() }));
 jest.mock('../src/connection', () => {
   const actual = jest.requireActual('../src/connection');
   class RecordingConnection extends actual.WebSocketConnection {
-    static hosts: string[] = [];
+    static readonly hosts: string[] = [];
     constructor(host: string, ...rest: unknown[]) {
       super(host, ...rest);
       RecordingConnection.hosts.push(host);
