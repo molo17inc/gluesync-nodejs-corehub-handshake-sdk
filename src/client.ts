@@ -699,23 +699,14 @@ export class GluesyncClient extends EventEmitter {
     try {
       // The configured host goes first: the address of the last connection
       // may have come from discovery and point to a CoreHub that no longer exists
-      const knownHosts = [
-        ...new Set([this.configuredHost, this.host]),
-      ].filter((host): host is string => host !== null);
+      const knownHosts = [...new Set([this.configuredHost, this.host])].filter(
+        (host): host is string => host !== null,
+      );
 
-      for (const host of knownHosts) {
-        try {
-          log(
-            'CoreHub address known (%s), attempting direct reconnection...',
-            host,
-          );
-          return await this._reconnectTo(host);
-        } catch (reconnectError) {
-          if (reconnectError instanceof GluesyncClosedError) {
-            throw reconnectError;
-          }
-          log('Direct reconnection to %s failed: %s', host, reconnectError);
-        }
+      const reconnectedToken =
+        await this._reconnectToFirstReachable(knownHosts);
+      if (reconnectedToken !== undefined) {
+        return reconnectedToken;
       }
 
       if (knownHosts.length > 0) {
@@ -750,6 +741,37 @@ export class GluesyncClient extends EventEmitter {
       log('Failed to reconnect: %s', error);
       throw error;
     }
+  }
+
+  /**
+   * Try the given hosts one after the other, in order, and stop at the first
+   * one that accepts the connection.
+   *
+   * @param hosts - Hosts to try, most trusted first
+   * @returns The authentication token, or undefined when no host answered
+   */
+  private async _reconnectToFirstReachable(
+    hosts: ReadonlyArray<string>,
+  ): Promise<string | undefined> {
+    if (hosts.length === 0) {
+      return undefined;
+    }
+
+    const [host, ...remaining] = hosts;
+    try {
+      log(
+        'CoreHub address known (%s), attempting direct reconnection...',
+        host,
+      );
+      return await this._reconnectTo(host);
+    } catch (reconnectError) {
+      if (reconnectError instanceof GluesyncClosedError) {
+        throw reconnectError;
+      }
+      log('Direct reconnection to %s failed: %s', host, reconnectError);
+    }
+
+    return this._reconnectToFirstReachable(remaining);
   }
 
   /**
