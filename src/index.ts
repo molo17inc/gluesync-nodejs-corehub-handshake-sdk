@@ -33,6 +33,7 @@ debug.enable('gluesync:*');
 
 // Export main components
 export { GluesyncClient } from './client';
+export type { ExtraHeaders } from './client';
 export { WebSocketConnection } from './connection';
 export { CoreHubDiscovery, getCorehubAddress } from './discovery';
 

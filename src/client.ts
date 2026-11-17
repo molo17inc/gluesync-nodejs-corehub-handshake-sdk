@@ -39,6 +39,14 @@ import {
 } from './exceptions';
 import debugTZ from './debugTZ';
 
+/**
+ * Handshake headers a module adds to Module-License and Module-Tag, or a
+ * function that returns them when a connection is opened.
+ */
+export type ExtraHeaders =
+  | Readonly<Record<string, string>>
+  | (() => Readonly<Record<string, string>>);
+
 // Set up debug logger
 const log = debugTZ('gluesync:client');
 
@@ -62,6 +70,7 @@ export class GluesyncClient extends EventEmitter {
   private pongTimeout: number;
   private discoveryStartPort: number;
   private discoveryPortRange: number;
+  private extraHeaders: ExtraHeaders | undefined;
 
   private licenseFilePath: string;
 
@@ -95,6 +104,10 @@ export class GluesyncClient extends EventEmitter {
    *   this many milliseconds (0 disables the check)
    * @param options.discoveryStartPort - Base port for UDP discovery
    * @param options.discoveryPortRange - Number of ports to scan for UDP discovery
+   * @param options.extraHeaders - More handshake headers (for example
+   *   Module-Port, Module-Scheme or Module-Environment), or a function that
+   *   returns them, called again on every (re)connection. They never replace
+   *   Module-License or Module-Tag.
    */
   constructor({
     host = null,
@@ -108,6 +121,7 @@ export class GluesyncClient extends EventEmitter {
     pongTimeout = DEFAULT_PONG_TIMEOUT_MS,
     discoveryStartPort = 1717,
     discoveryPortRange = 10,
+    extraHeaders,
   }: {
     host?: string | null;
     port?: number;
@@ -120,6 +134,7 @@ export class GluesyncClient extends EventEmitter {
     pongTimeout?: number;
     discoveryStartPort?: number;
     discoveryPortRange?: number;
+    extraHeaders?: ExtraHeaders;
   } = {}) {
     super();
 
@@ -134,6 +149,7 @@ export class GluesyncClient extends EventEmitter {
     this.pongTimeout = pongTimeout;
     this.discoveryStartPort = discoveryStartPort;
     this.discoveryPortRange = discoveryPortRange;
+    this.extraHeaders = extraHeaders;
     this.licenseFilePath = licenseFilePath;
 
     // Event handlers
@@ -244,9 +260,38 @@ export class GluesyncClient extends EventEmitter {
    */
   public getConnectionHeaders(): Record<string, string> {
     return {
+      ...this._resolveExtraHeaders(),
       'Module-License': this.getLicenseContent(),
       'Module-Tag': this.moduleTag,
     };
+  }
+
+  /**
+   * The extra headers as they are now. A function that throws, or a value
+   * that is not a string, never blocks the connection: it is left out.
+   */
+  private _resolveExtraHeaders(): Record<string, string> {
+    if (!this.extraHeaders) {
+      return {};
+    }
+
+    let headers: Record<string, unknown>;
+    try {
+      headers =
+        typeof this.extraHeaders === 'function'
+          ? this.extraHeaders()
+          : this.extraHeaders;
+    } catch (error) {
+      log('Extra headers could not be computed: %O', error);
+      return {};
+    }
+
+    return Object.fromEntries(
+      Object.entries(headers ?? {}).filter(
+        (entry): entry is [string, string] =>
+          typeof entry[1] === 'string' && entry[1].length > 0,
+      ),
+    );
   }
 
   /**
